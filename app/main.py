@@ -4,6 +4,9 @@ from fastapi.templating import Jinja2Templates
 from pydantic import HttpUrl, ValidationError
 from urllib.parse import urlparse
 from app.services.detector import detect_service
+from app.scrapers.base import ScraperFactory
+import asyncio
+import app.scrapers.factory
 
 app = FastAPI(
     title="Сравнитель длительности серий",
@@ -82,17 +85,39 @@ async def compare(
             }
         )
 
+    baseline_scraper = ScraperFactory.get_scraper(baseline_service)
+    compared_scraper = ScraperFactory.get_scraper(compared_service)
+    if not baseline_scraper or not compared_scraper:
+        errors.append("Один из сервисов пока не реализован")
+        # возврат с ошибкой    
+
+    # Запускаем скрейпинг (асинхронно)
+    # baseline_eps, compared_eps = await asyncio.gather(
+    #     baseline_scraper.scrape_episodes(baseline_url),
+    #     compared_scraper.scrape_episodes(compared_url)
+    # )
+
+    baseline_result = await baseline_scraper.scrape_episodes(baseline_url)
+    compared_result = await compared_scraper.scrape_episodes(compared_url)
+
     # Пока просто показываем, что определили
     context = {
         "request": request,
-        "title": "Сервисы определены (Этап 1.3)",
+        "title": "Результаты анализа длительности",
         "baseline_url": baseline_url,
-        "baseline_service": baseline_service,
         "baseline_name": baseline_name,
+        "baseline_series_title": baseline_result.series_title or "Название не удалось определить",
+        "baseline_episodes": baseline_result.episodes,
         "compared_url": compared_url,
-        "compared_service": compared_service,
         "compared_name": compared_name,
-        "message": "Следующий шаг — запуск соответствующих скрейперов",
-    }
+        "compared_series_title": compared_result.series_title or "—",
+        "compared_episodes": compared_result.episodes,  # если реализовано
+        "message": "Данные с IMDB получены",
+    }        
 
     return templates.TemplateResponse("result.html", context)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

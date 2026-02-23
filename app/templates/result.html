@@ -1,42 +1,99 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>{{ title }}</title>
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; }
-        .card { background: #f8f9fa; padding: 24px; border-radius: 12px; border: 1px solid #dee2e6; }
-        h1 { color: #1a73e8; }
-        .pair { margin: 20px 0; padding: 16px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .label { font-weight: bold; color: #444; }
-        .service { color: #0066cc; font-weight: 600; }
-        .url { font-family: monospace; background: #e8f0fe; padding: 2px 6px; border-radius: 4px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1100px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+    }
+    h1 { color: #1e40af; margin-bottom: 0.5rem; }
+    .summary { color: #4b5563; margin-bottom: 1.5rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      background: #f3f4f6;
+      font-weight: 600;
+      color: #374151;
+    }
+    tr:hover { background: #f9fafb; }
+    .duration { font-family: monospace; font-weight: 500; }
+    .missing { color: #9ca3af; font-style: italic; }
+    .source-info {
+      background: #eff6ff;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+    }
+    .back { margin-top: 2rem; }
+  </style>
 </head>
 <body>
-    <h1>Этап 1.3 — сервисы определены</h1>
 
-    <div class="card">
-        <div class="pair">
-            <div class="label">Baseline:</div>
-            <div><span class="url">{{ baseline_url }}</span></div>
-            <div>Сервис: <span class="service">{{ baseline_name }} ({{ baseline_service }})</span></div>
-        </div>
+  <h1>Результаты анализа длительности</h1>
 
-        <div class="pair">
-            <div class="label">Compared:</div>
-            <div><span class="url">{{ compared_url }}</span></div>
-            <div>Сервис: <span class="service">{{ compared_name }} ({{ compared_service }})</span></div>
-        </div>
-
-        <hr>
-        <p style="color:#555; font-style:italic;">
-            {{ message }}
-        </p>
-
-        <p style="margin-top:2rem;">
-            <a href="/">← Вернуться к форме</a>
-        </p>
+    <div class="source-info">
+    <strong>Baseline:</strong> {{ baseline_name }}<br>
+    {% if baseline_series_title %}
+        <strong>Сериал:</strong> {{ baseline_series_title }}<br>
+    {% endif %}
+    <a href="{{ baseline_url }}" target="_blank" style="color:#2563eb; word-break:break-all;">
+        {{ baseline_url | truncate(90) }}
+    </a><br><br>
+    <strong>Найдено эпизодов:</strong> {{ baseline_episodes | length }}
     </div>
+
+  {% if baseline_episodes %}
+    <table>
+      <thead>
+        <tr>
+          <th>Сезон</th>
+          <th>Эп.</th>
+          <th>Название</th>
+          <th class="duration">Длительность</th>
+          <!-- можно добавить позже колонку для compared -->
+        </tr>
+      </thead>
+      <tbody>
+        {% for ep in baseline_episodes %}
+          <tr>
+            <td>{{ ep.season }}</td>
+            <td>{{ ep.episode }}</td>
+            <td>{{ ep.title }}</td>
+            <td class="duration">
+              {% if ep.duration_min %}
+                {{ ep.duration_min }} мин
+              {% else %}
+                <span class="missing">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p style="color:#dc2626; font-weight:500;">
+      Не удалось получить данные об эпизодах.
+    </p>
+  {% endif %}
+
+  <div class="back">
+    <a href="/" style="color:#2563eb; text-decoration:none; font-weight:500;">← Вернуться к вводу ссылок</a>
+  </div>
+
 </body>
 </html>
