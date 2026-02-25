@@ -1,99 +1,130 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ title }}</title>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 1100px;
-      margin: 2rem auto;
-      padding: 0 1rem;
-      line-height: 1.5;
-    }
-    h1 { color: #1e40af; margin-bottom: 0.5rem; }
-    .summary { color: #4b5563; margin-bottom: 1.5rem; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1.5rem 0;
-      font-size: 0.95rem;
-    }
-    th, td {
-      padding: 10px 12px;
-      text-align: left;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    th {
-      background: #f3f4f6;
-      font-weight: 600;
-      color: #374151;
-    }
-    tr:hover { background: #f9fafb; }
-    .duration { font-family: monospace; font-weight: 500; }
-    .missing { color: #9ca3af; font-style: italic; }
-    .source-info {
-      background: #eff6ff;
-      padding: 1rem;
-      border-radius: 8px;
-      margin-bottom: 1.5rem;
-    }
-    .back { margin-top: 2rem; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 1280px; padding: 0 1rem; line-height: 1.5; }
+        h1 { color: #1e40af; }
+        .source-block {
+            background: #f8fafc;
+            padding: 1rem 1.25rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            border: 1px solid #e2e8f0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            font-size: 0.95rem;
+        }
+        th, td {
+            padding: 12px 10px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th { background: #f1f5f9; font-weight: 600; color: #334155; }
+        tr:hover { background: #f8fafc; }
+        tr.missing-baseline { background: #fef3f2; }
+        tr.missing-compared { background: #f0fdf4; }
+        
+        .duration { font-family: monospace; font-weight: 500; }
+        .diff-red { color: #dc2626; font-weight: 600; }
+        .diff-green { color: #16a34a; font-weight: 600; }
+        .diff-neutral { color: #64748b; }
+
+        .legend {
+            display: flex;
+            gap: 2rem;
+            margin: 1.5rem 0;
+            font-size: 0.9rem;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .dot-red { display: inline-block; width: 12px; height: 12px; background: #dc2626; border-radius: 50%; }
+        .dot-green { display: inline-block; width: 12px; height: 12px; background: #16a34a; border-radius: 50%; }
+        .dot-gray { display: inline-block; width: 12px; height: 12px; background: #64748b; border-radius: 50%; }
+    </style>
 </head>
 <body>
 
-  <h1>Результаты анализа длительности</h1>
+<h1>Сравнение длительности серий</h1>
 
-    <div class="source-info">
-    <strong>Baseline:</strong> {{ baseline_name }}<br>
-    {% if baseline_series_title %}
-        <strong>Сериал:</strong> {{ baseline_series_title }}<br>
-    {% endif %}
-    <a href="{{ baseline_url }}" target="_blank" style="color:#2563eb; word-break:break-all;">
-        {{ baseline_url | truncate(90) }}
-    </a><br><br>
-    <strong>Найдено эпизодов:</strong> {{ baseline_episodes | length }}
-    </div>
+<!-- Baseline -->
+<div class="source-block">
+    <strong>Baseline:</strong> {{ baseline_name }} — <strong>{{ baseline_series_title }}</strong><br>
+    <a href="{{ baseline_url }}" target="_blank">{{ baseline_url }}</a>
+</div>
 
-  {% if baseline_episodes %}
-    <table>
-      <thead>
+<!-- Compared -->
+<div class="source-block">
+    <strong>Compared:</strong> {{ compared_name }} — <strong>{{ compared_series_title }}</strong><br>
+    <a href="{{ compared_url }}" target="_blank">{{ compared_url }}</a>
+</div>
+
+<div class="legend">
+    <div class="legend-item"><span class="dot-red"></span> Сокращение ≥ 3%</div>
+    <div class="legend-item"><span class="dot-green"></span> Длиннее</div>
+    <div class="legend-item"><span class="dot-gray"></span> Разница &lt; 3% или отсутствует</div>
+</div>
+
+<table>
+    <thead>
         <tr>
-          <th>Сезон</th>
-          <th>Эп.</th>
-          <th>Название</th>
-          <th class="duration">Длительность</th>
-          <!-- можно добавить позже колонку для compared -->
+            <th>Сезон</th>
+            <th>Эп.</th>
+            <th>Название (Baseline)</th>
+            <th class="duration">Длит. (Baseline)</th>
+            <th>Название (Compared)</th>
+            <th class="duration">Длит. (Compared)</th>
+            <th>Разница</th>
+            <th>%</th>
         </tr>
-      </thead>
-      <tbody>
-        {% for ep in baseline_episodes %}
-          <tr>
-            <td>{{ ep.season }}</td>
-            <td>{{ ep.episode }}</td>
-            <td>{{ ep.title }}</td>
+    </thead>
+    <tbody>
+        {% for row in comparison_rows %}
+        <tr class="{% if row.missing_in_baseline %}missing-baseline{% elif row.missing_in_compared %}missing-compared{% endif %}">
+            <td><strong>{{ row.season }}</strong></td>
+            <td><strong>{{ row.episode }}</strong></td>
+            
+            <td>{{ row.title_baseline }}</td>
             <td class="duration">
-              {% if ep.duration_min %}
-                {{ ep.duration_min }} мин
-              {% else %}
-                <span class="missing">—</span>
-              {% endif %}
+                {% if row.duration_baseline %}{{ row.duration_baseline }} мин{% else %}—{% endif %}
             </td>
-          </tr>
+            
+            <td>{{ row.title_compared }}</td>
+            <td class="duration">
+                {% if row.duration_compared %}{{ row.duration_compared }} мин{% else %}—{% endif %}
+            </td>
+            
+            <td>
+                {% if row.diff_min is not none %}
+                    <span class="{% if row.diff_min < 0 %}diff-red{% elif row.diff_min > 0 %}diff-green{% else %}diff-neutral{% endif %}">
+                        {{ row.diff_min }} мин
+                    </span>
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+            
+            <td>
+                {% if row.diff_percent is not none %}
+                    <span class="{% if row.diff_min < 0 %}diff-red{% elif row.diff_min > 0 %}diff-green{% else %}diff-neutral{% endif %}">
+                        {{ row.diff_percent }}%
+                    </span>
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+        </tr>
         {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p style="color:#dc2626; font-weight:500;">
-      Не удалось получить данные об эпизодах.
-    </p>
-  {% endif %}
+    </tbody>
+</table>
 
-  <div class="back">
-    <a href="/" style="color:#2563eb; text-decoration:none; font-weight:500;">← Вернуться к вводу ссылок</a>
-  </div>
+<p style="margin-top: 2rem;">
+    <a href="/" style="color:#2563eb; font-weight:500;">← Новый сравнение</a>
+</p>
 
 </body>
 </html>

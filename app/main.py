@@ -5,6 +5,7 @@ from pydantic import HttpUrl, ValidationError
 from urllib.parse import urlparse
 from app.services.detector import detect_service
 from app.scrapers.base import ScraperFactory
+from app.services.comparison import create_comparison_rows
 import asyncio
 import app.scrapers.factory
 
@@ -100,20 +101,30 @@ async def compare(
     baseline_result = await baseline_scraper.scrape_episodes(baseline_url)
     compared_result = await compared_scraper.scrape_episodes(compared_url)
 
-    # Пока просто показываем, что определили
+    comparison_rows = create_comparison_rows(
+        baseline_result.episodes,
+        compared_result.episodes
+    )
+
     context = {
         "request": request,
-        "title": "Результаты анализа длительности",
-        "baseline_url": baseline_url,
+        "title": "Сравнение длительности серий",
+        
+        # Baseline блок
         "baseline_name": baseline_name,
-        "baseline_series_title": baseline_result.series_title or "Название не удалось определить",
-        "baseline_episodes": baseline_result.episodes,
-        "compared_url": compared_url,
+        "baseline_series_title": baseline_result.series_title or "—",
+        "baseline_url": baseline_url,
+        
+        # Compared блок
         "compared_name": compared_name,
         "compared_series_title": compared_result.series_title or "—",
-        "compared_episodes": compared_result.episodes,  # если реализовано
-        "message": "Данные с IMDB получены",
-    }        
+        "compared_url": compared_url,
+        
+        # Таблица
+        "comparison_rows": comparison_rows,
+        
+        "total_episodes": len(comparison_rows),
+    }
 
     return templates.TemplateResponse("result.html", context)
 
