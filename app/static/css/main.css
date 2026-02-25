@@ -1,0 +1,81 @@
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 1280px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    line-height: 1.6;
+    color: #1f2937;
+}
+
+.source-block {
+    background: #f8fafc;
+    padding: 1.25rem;
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2rem 0;
+}
+
+th, td {
+    padding: 12px 10px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+th {
+    background: #f1f5f9;
+    font-weight: 600;
+    color: #334155;
+}
+
+.duration {
+    font-family: ui-monospace, monospace;
+    font-weight: 500;
+}
+
+/* ─── Цветовая схема сравнения ─────────────────────────────────────── */
+.neutral,
+.small-diff {
+    color: #6b7280;           /* серый */
+    font-weight: 500;
+}
+
+.medium-diff {
+    color: #d97706;           /* оранжевый / янтарный */
+    font-weight: 600;
+}
+
+.large-red {
+    color: #dc2626;           /* ярко-красный */
+    font-weight: 700;
+}
+
+.large-green {
+    color: #16a34a;           /* ярко-зелёный */
+    font-weight: 700;
+}
+
+/* Фон всей строки при значительной разнице (опционально) */
+tr.highlight-strong {
+    background-color: #fef2f2;   /* светло-красный фон */
+}
+
+tr.highlight-weak {
+    background-color: #f0fdf4;   /* светло-зелёный фон */
+}
+
+/* классы для отсутствующих эпизодов */
+tr.missing-baseline {
+    background-color: #fef3f2;
+    opacity: 0.85;
+}
+
+tr.missing-compared {
+    background-color: #fef2f2;
+    opacity: 0.85;
+}

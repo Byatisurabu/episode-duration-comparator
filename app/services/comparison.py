@@ -33,17 +33,28 @@ def create_comparison_rows(baseline_eps, compared_eps):
         diff_percent = None
         color_class = "neutral"
 
-        if dur_b is not None and dur_c is not None:
+        if dur_b is not None and dur_c is not None and dur_b > 0:
             diff_min = dur_c - dur_b
-            if dur_b > 0:
-                diff_percent = round((diff_min / dur_b) * 100, 1)
+            diff_percent = round((diff_min / dur_b) * 100, 1)
+            abs_p = abs(diff_percent)
+            abs_m = abs(diff_min)
 
-            if abs(diff_percent or 0) < 3:
-                color_class = "neutral"
-            elif diff_min < 0:
-                color_class = "red"      # сокращение
+            # Главное правило: если разница ≤ 1 минута → всегда считаем незначительной
+            if abs_m <= 1 or abs_p < 3:
+                color_class = "small-diff"
+            elif abs_p < 5:
+                color_class = "medium-diff"
             else:
-                color_class = "green"    # длиннее
+                # ≥ 5% и больше 1 минуты
+                color_class = "large-red" if diff_min < 0 else "large-green" 
+            
+        row_class = ""
+        if b is None:
+            row_class = "missing-baseline"
+        elif c is None:
+            row_class = "missing-compared"
+        elif abs_p >= 5:
+            row_class = "highlight-strong" if diff_min < 0 else "highlight-weak"                        
 
         rows.append({
             "season": season,
@@ -55,6 +66,7 @@ def create_comparison_rows(baseline_eps, compared_eps):
             "diff_min": diff_min,
             "diff_percent": diff_percent,
             "color_class": color_class,
+            "row_class": row_class,
             "missing_in_baseline": b is None,
             "missing_in_compared": c is None,
         })

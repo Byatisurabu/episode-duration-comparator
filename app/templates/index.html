@@ -49,19 +49,25 @@
     
 
     <p><strong>MVP v0.1</strong> — сравниваем baseline и compared</p>
+    <div style="margin: 1.5rem 0; font-size: 0.9rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
+        <div>Сравнение длительности видео-контента на различных стриминговых площадках.</div>
+        <div>Поддерживаемые сервисы: IMDB и Amediateka.</div>
+        <div>Для сравнения в качестве длительности по умолчанию рекомендуется брать IMDB. Но с учётом того, что этот сервис сам округляет длительность до целых минут.<br>
+        Небольшие изменения в длительности могут быть вызваны разным составом заставок компаний в начале и конце роликов, а также изменением финальных титров.</div>
+    </div>
 
     <!-- Форма-заглушка (будет использоваться на Этапе 1.2) -->
     <form action="/compare" method="post">
-        <label for="baseline">Baseline URL (оригинал):</label><br>
+        <label for="baseline">Baseline URL:</label><br>
         <input type="url" id="baseline" name="baseline_url" placeholder="https://www.imdb.com/title/tt..." required><br><br>
 
-        <label for="compared">Compared URL (для сравнения):</label><br>
+        <label for="compared">Compared URL:</label><br>
         <input type="url" id="compared" name="compared_url" placeholder="https://www.amediateka.ru/..." required><br><br>
 
-        <button type="submit">🚀 Сравнить длительности</button>
+        <button type="submit">🚀 Сравнить</button>
     </form>
 
     <hr>
-    <small>Этап 1.4 — Добавлен скрэпинг imdb ✅</small>
+    <small>Этап 1.8 — Вывод таблицы сравнения с цветовой индикацией ✅</small>
 </body>
 </html>

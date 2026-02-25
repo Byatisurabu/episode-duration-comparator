@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import HttpUrl, ValidationError
 from urllib.parse import urlparse
@@ -17,6 +18,7 @@ app = FastAPI(
 
 templates = Jinja2Templates(directory="app/templates")
 
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 def is_valid_url(url_str: str) -> bool:
     """Простая проверка, что строка похожа на http/https URL"""

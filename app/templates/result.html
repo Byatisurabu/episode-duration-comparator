@@ -4,48 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
-    <style>
-        body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 1280px; padding: 0 1rem; line-height: 1.5; }
-        h1 { color: #1e40af; }
-        .source-block {
-            background: #f8fafc;
-            padding: 1rem 1.25rem;
-            border-radius: 10px;
-            margin-bottom: 1.5rem;
-            border: 1px solid #e2e8f0;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 2rem 0;
-            font-size: 0.95rem;
-        }
-        th, td {
-            padding: 12px 10px;
-            text-align: left;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        th { background: #f1f5f9; font-weight: 600; color: #334155; }
-        tr:hover { background: #f8fafc; }
-        tr.missing-baseline { background: #fef3f2; }
-        tr.missing-compared { background: #f0fdf4; }
-        
-        .duration { font-family: monospace; font-weight: 500; }
-        .diff-red { color: #dc2626; font-weight: 600; }
-        .diff-green { color: #16a34a; font-weight: 600; }
-        .diff-neutral { color: #64748b; }
-
-        .legend {
-            display: flex;
-            gap: 2rem;
-            margin: 1.5rem 0;
-            font-size: 0.9rem;
-        }
-        .legend-item { display: flex; align-items: center; gap: 6px; }
-        .dot-red { display: inline-block; width: 12px; height: 12px; background: #dc2626; border-radius: 50%; }
-        .dot-green { display: inline-block; width: 12px; height: 12px; background: #16a34a; border-radius: 50%; }
-        .dot-gray { display: inline-block; width: 12px; height: 12px; background: #64748b; border-radius: 50%; }
-    </style>
+    <link rel="stylesheet" href="/static/css/main.css">
 </head>
 <body>
 
@@ -63,10 +22,11 @@
     <a href="{{ compared_url }}" target="_blank">{{ compared_url }}</a>
 </div>
 
-<div class="legend">
-    <div class="legend-item"><span class="dot-red"></span> Сокращение ≥ 3%</div>
-    <div class="legend-item"><span class="dot-green"></span> Длиннее</div>
-    <div class="legend-item"><span class="dot-gray"></span> Разница &lt; 3% или отсутствует</div>
+<div style="margin: 1.5rem 0; font-size: 0.9rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
+    <div><span style="color:#6b7280">■</span> Разница < 3% или ≤ 1 мин.</div>
+    <div><span style="color:#d97706">■</span> Разница 3–5%</div>
+    <div><span style="color:#dc2626">■</span> Сокращение ≥ 5%</div>
+    <div><span style="color:#16a34a">■</span> Увеличение ≥ 5%</div>
 </div>
 
 <table>
@@ -84,7 +44,7 @@
     </thead>
     <tbody>
         {% for row in comparison_rows %}
-        <tr class="{% if row.missing_in_baseline %}missing-baseline{% elif row.missing_in_compared %}missing-compared{% endif %}">
+        <tr class="{{ row.row_class }}">
             <td><strong>{{ row.season }}</strong></td>
             <td><strong>{{ row.episode }}</strong></td>
             
@@ -100,8 +60,8 @@
             
             <td>
                 {% if row.diff_min is not none %}
-                    <span class="{% if row.diff_min < 0 %}diff-red{% elif row.diff_min > 0 %}diff-green{% else %}diff-neutral{% endif %}">
-                        {{ row.diff_min }} мин
+                    <span class="{{ row.color_class }}">
+                        {% if row.diff_min > 0 %}+{% endif %}{{ row.diff_min }} мин
                     </span>
                 {% else %}
                     —
@@ -110,8 +70,8 @@
             
             <td>
                 {% if row.diff_percent is not none %}
-                    <span class="{% if row.diff_min < 0 %}diff-red{% elif row.diff_min > 0 %}diff-green{% else %}diff-neutral{% endif %}">
-                        {{ row.diff_percent }}%
+                    <span class="{{ row.color_class }}" title="Baseline: {{ row.duration_baseline }} мин → Compared: {{ row.duration_compared }} мин">
+                        {{ row.diff_percent|round(1) }}%
                     </span>
                 {% else %}
                     —
@@ -123,7 +83,7 @@
 </table>
 
 <p style="margin-top: 2rem;">
-    <a href="/" style="color:#2563eb; font-weight:500;">← Новый сравнение</a>
+    <a href="/" style="color:#2563eb; font-weight:500;">← Новое сравнение</a>
 </p>
 
 </body>

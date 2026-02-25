@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 
 from app.scrapers.base import BaseScraper
 from app.models import Episode, ScrapeResult
+from app.services.normalizer import normalize_duration
 
 
 class AmediatekaScraper(BaseScraper):
@@ -72,18 +73,8 @@ class AmediatekaScraper(BaseScraper):
                     continue
 
                 title = ep.get("title", "Без названия").strip()
-                duration_min = None
-
                 duration_raw = ep.get("duration")
-                if duration_raw is not None:
-                    try:
-                        # Приводим к числу — строка, число, float — всё что угодно
-                        duration_sec = float(duration_raw)
-                        if duration_sec > 0:
-                            duration_min = round(duration_sec / 60)   # или int(duration_sec // 60)
-                    except (ValueError, TypeError):
-                        # если "N/A", "", "неизвестно" и т.п. → просто пропускаем
-                        pass
+                duration_min = normalize_duration(duration_raw)
 
                 episodes.append(Episode(
                     season=content.get("seasonNumber", 0),  # или брать из url, если нужно

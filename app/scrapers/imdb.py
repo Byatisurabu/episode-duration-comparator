@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 from app.scrapers.base import BaseScraper
 from app.models import Episode, ScrapeResult
+from app.services.normalizer import normalize_duration
 
 
 class ImdbScraper(BaseScraper):
@@ -161,7 +162,7 @@ class ImdbScraper(BaseScraper):
             except Exception as e:
                 print(f"Ошибка при парсинге списка: {e}")
                 return []
-
+    
     async def _enrich_with_duration(self, episode: Episode):
         if not episode.episode_id:
             return
@@ -172,43 +173,33 @@ class ImdbScraper(BaseScraper):
                 resp = await client.get(url)
                 if resp.status_code != 200:
                     return
-
-                html = resp.text
-
-                # Вариант А — ищем в ld+json на странице эпизода
-                soup = BeautifulSoup(html, "html.parser")
-                script = soup.find("script", type="application/ld+json")
-                if script:
-                    try:
-                        data = json.loads(script.string)
-                        duration = data.get("duration")  # PT45M
-                        if duration and duration.startswith("PT"):
-                            minutes = 0
-                            h = re.search(r'(\d+)H', duration)
-                            m = re.search(r'(\d+)M', duration)
-                            if h:
-                                minutes += int(h.group(1)) * 60
-                            if m:
-                                minutes += int(m.group(1))
-                            if minutes > 0:
-                                episode.duration_min = minutes
-                                return
-                    except:
-                        pass
-
-                # Вариант Б — ищем текст "X min" / "Xh Ym" в технических данных
-                runtime_texts = re.findall(
-                    r'(\d{1,2}h?\s*\d{0,2}m?)',
-                    html.lower()
-                )
-                for txt in runtime_texts:
-                    minutes = self._parse_runtime(txt)
-                    if minutes and 5 < minutes < 300:  # разумные границы
-                        episode.duration_min = minutes
-                        return
-
+                minutes = await self._extract_duration_from_episode_page(resp.text)
+                if minutes is not None:
+                    episode.duration_min = minutes
             except Exception as e:
-                print(f"Ошибка при парсинге длительности {episode.episode_id}: {e}")
+                print(f"Ошибка длительности {episode.episode_id}: {e}")
+                
+    async def _extract_duration_from_episode_page(self, html: str) -> Optional[int]:
+        # ld+json
+        soup = BeautifulSoup(html, "html.parser")
+        script = soup.find("script", type="application/ld+json")
+        if script:
+            try:
+                data = json.loads(script.string)
+                dur = data.get("duration")
+                if dur:
+                    return normalize_duration(dur)
+            except:
+                pass
+
+        # текстовый поиск
+        candidates = re.findall(r'(\d{1,2}h?\s*\d{0,2}m?|PT\d+[HM])', html.lower())
+        for cand in candidates:
+            min_val = normalize_duration(cand)
+            if min_val and 5 < min_val < 300:
+                return min_val
+
+        return None
 
     @staticmethod
     def _parse_runtime(text: str) -> Optional[int]:
