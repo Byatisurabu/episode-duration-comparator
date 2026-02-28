@@ -95,13 +95,13 @@ async def compare(
         # возврат с ошибкой    
 
     # Запускаем скрейпинг (асинхронно)
-    # baseline_eps, compared_eps = await asyncio.gather(
-    #     baseline_scraper.scrape_episodes(baseline_url),
-    #     compared_scraper.scrape_episodes(compared_url)
-    # )
+    baseline_result, compared_result = await asyncio.gather(
+        baseline_scraper.scrape_episodes(baseline_url),
+        compared_scraper.scrape_episodes(compared_url)
+    )
 
-    baseline_result = await baseline_scraper.scrape_episodes(baseline_url)
-    compared_result = await compared_scraper.scrape_episodes(compared_url)
+    # baseline_result = await baseline_scraper.scrape_episodes(baseline_url)
+    # compared_result = await compared_scraper.scrape_episodes(compared_url)
 
     comparison_rows = create_comparison_rows(
         baseline_result.episodes,

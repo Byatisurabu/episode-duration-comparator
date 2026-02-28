@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import httpx
 from bs4 import BeautifulSoup
+import asyncio
 
 from app.scrapers.base import BaseScraper
 from app.models import Episode, ScrapeResult
@@ -14,6 +15,10 @@ from app.services.normalizer import normalize_duration
 
 
 class ImdbScraper(BaseScraper):
+    # Семафор — не более 3 одновременных запросов к IMDb
+    # Создаём на уровне класса, чтобы лимит был общим для всех вызовов
+    _semaphore = asyncio.Semaphore(3)
+
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                       "(KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
@@ -22,20 +27,16 @@ class ImdbScraper(BaseScraper):
     }
 
     async def scrape_episodes(self, url: str) -> ScrapeResult:
-        # 1. Получаем ID сериала из URL эпизодов
         series_id = self._extract_series_id(url)
         if not series_id:
             return ScrapeResult(series_title=None, episodes=[])
 
-        # 2. Получаем название сериала (с главной страницы)
         series_title = await self._get_series_title(series_id)
-
-        # 3. Получаем список эпизодов (как раньше)
         episodes = await self._extract_episode_list_from_page(url)
         if not episodes:
             return ScrapeResult(series_title=series_title, episodes=[])
 
-        # 4. Обогащаем длительностями
+        # gather оставляем — параллелизм нужен, но теперь он ограничен семафором
         tasks = [self._enrich_with_duration(ep) for ep in episodes]
         await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -167,17 +168,27 @@ class ImdbScraper(BaseScraper):
         if not episode.episode_id:
             return
 
-        url = f"https://www.imdb.com/title/{episode.episode_id}/"
-        async with httpx.AsyncClient(headers=self.HEADERS, timeout=12.0) as client:
-            try:
-                resp = await client.get(url)
-                if resp.status_code != 200:
-                    return
-                minutes = await self._extract_duration_from_episode_page(resp.text)
-                if minutes is not None:
-                    episode.duration_min = minutes
-            except Exception as e:
-                print(f"Ошибка длительности {episode.episode_id}: {e}")
+        async with self._semaphore:  # ← ключевое изменение
+            url = f"https://www.imdb.com/title/{episode.episode_id}/"
+            async with httpx.AsyncClient(headers=self.HEADERS, timeout=12.0) as client:
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code == 429:
+                        # IMDb явно говорит "слишком много запросов" — ждём и пробуем ещё раз
+                        print(f"Rate limit на {episode.episode_id}, пауза 5 сек")
+                        await asyncio.sleep(5)
+                        resp = await client.get(url)
+                    if resp.status_code != 200:
+                        return
+                    minutes = await self._extract_duration_from_episode_page(resp.text)
+                    if minutes is not None:
+                        episode.duration_min = minutes
+                except Exception as e:
+                    print(f"Ошибка длительности {episode.episode_id}: {e}")
+            
+            # Пауза после каждого запроса, пока семафор ещё захвачен
+            # Это гарантирует минимум 0.4 сек между запросами в одном "слоте"
+            await asyncio.sleep(0.4)
                 
     async def _extract_duration_from_episode_page(self, html: str) -> Optional[int]:
         # ld+json

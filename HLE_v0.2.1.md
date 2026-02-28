@@ -76,7 +76,8 @@ IMDb + Amediateka, нормализация длительностей, срав
 | 1.6  | Нормализация данных                           | <span style="background:#e6ffe6">Выполнено</span> | normalize_duration — используется в обоих скрейперах                      |
 | 1.7  | Comparison Engine                             | <span style="background:#e6ffe6">Выполнено</span> | diff мин + %, порог ≤1 мин = small-diff, цветовая индикация               |
 | 1.8  | Отображение таблицы                           | <span style="background:#e6ffe6">Выполнено</span> | сравнительная таблица с цветами, missing-строки                           |
-| 1.9  | Docker                                        | <span style="background:#fff3cd">В работе</span>  | **Следующий шаг** — подготовить Dockerfile + docker-compose.yml           |
+| 1.9  | Docker                                        | <span style="background:#e6ffe6">Выполнено</span> | подготовить Dockerfile + docker-compose.yml           |
+| 1.10 | Выбор сезона                                  | <span style="background:#fff3cd">В работе</span>  | **Следующий шаг** — подготовить Dockerfile + docker-compose.yml           |
 
 ---
 
@@ -89,7 +90,14 @@ IMDb + Amediateka, нормализация длительностей, срав
    - .dockerignore  
    - Проверка: локальный запуск + доступ через браузер
 
-2. **Этап 2.1 — Telegram-бот (альфа-релиз для своих)**  
+2. **Этап 1.10 — Выбор сезона из списка**  
+   Цель: запуск одной командой `docker compose up`  
+   - Dockerfile (python:3.11-slim или 3.12-slim)  
+   - docker-compose.yml (сервис + порт 8000)  
+   - .dockerignore  
+   - Проверка: локальный запуск + доступ через браузер   
+
+3. **Этап 2.1 — Telegram-бот (альфа-релиз для своих)**  
    Цель: удобный доступ для тебя и семьи без браузера  
    - python-telegram-bot + webhook / polling  
    - Команда /start + обработка двух ссылок в сообщении  
@@ -97,13 +105,13 @@ IMDb + Amediateka, нормализация длительностей, срав
    - Локальный запуск + ngrok для теста  
    - Опционально: запуск на домашнем ПК с внешним доступом (через reverse proxy / Cloudflare Tunnel / VPS)
 
-3. **Этап 2.2 — Решение по постоянному запуску**  
+4. **Этап 2.2 — Решение по постоянному запуску**  
    Варианты:  
    - Домашний ПК + Cloudflare Tunnel / ngrok paid / reverse proxy  
    - Минимальный VPS (Hetzner ~3–5 €/мес) с белым IP  
    - **Не делать** публичный деплой на PaaS (Render/Railway/Fly) из-за банов
 
-4. **Этап 2.3 — База + кэширование (если бот станет популярным среди своих)**  
+5. **Этап 2.3 — База + кэширование (если бот станет популярным среди своих)**  
    - SQLite / TinyDB для истории сравнений  
    - Кэширование результатов (redis или файлы)  
    - Команда /history в боте

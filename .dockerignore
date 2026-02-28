@@ -1,0 +1,30 @@
+# Python артефакты
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+
+# Документация и прочее
+HLE_v0.1.md
+HLE_v0.2.md
+*.md
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.DS_Store
+
+# Тесты (если появятся)
+tests/
+.pytest_cache/

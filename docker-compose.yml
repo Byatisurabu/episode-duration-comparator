@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    container_name: episode-comparator
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+
+  bot:  
+    build: .
+    command: ["python", "-m", "bot.main"]
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - APP_URL=http://app:8000
+    depends_on:
+      - app
+    restart: unless-stopped
