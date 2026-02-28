@@ -2,7 +2,7 @@
 import re
 import json
 import asyncio
-from typing import Optional
+from typing import Optional, List
 
 import httpx
 from bs4 import BeautifulSoup
@@ -132,3 +132,83 @@ class AmediatekaScraper(BaseScraper):
 
         print("Amediateka: название сериала не удалось извлечь")
         return None
+
+    async def get_seasons(self, url: str) -> List[int]:
+        """Возвращает список номеров сезонов."""
+        season_map = await self._get_season_url_map(url)
+        return sorted(season_map.keys())
+
+
+    async def _get_season_url_map(self, url: str) -> dict[int, str]:
+        """
+        Возвращает маппинг {номер_сезона: полный_url} из longDescription.
+        Например: {1: 'https://...season_1_11976', 2: 'https://...season_2_11977'}
+        """
+        html = await self._fetch_page(url)
+        if not html:
+            return {}
+
+        match = re.search(
+            r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+            html, re.DOTALL
+        )
+        if not match:
+            return {}
+
+        try:
+            data = json.loads(match.group(1))
+            page_props = data.get("props", {}).get("pageProps", {})
+
+            # Источник 1 — ссылки из longDescription содержат полный URL с season_id
+            # Формат: /watch/series_11353_klient-vsegda-mertv/season_1_11976
+            series_content = page_props.get("seriesContent", {})
+            long_desc = series_content.get("longDescription", "")
+            if long_desc:
+                # Извлекаем пары (номер_сезона, полный_путь)
+                matches = re.findall(
+                    r'href="(https://www\.amediateka\.ru)?(/watch/series_\d+_[^/]+/season_(\d+)_\d+)"',
+                    long_desc
+                )
+                if matches:
+                    season_map = {}
+                    for _, path, season_num in matches:
+                        season_map[int(season_num)] = f"https://www.amediateka.ru{path}"
+                    return season_map
+
+            # Источник 2 — fallback: только текущий сезон из content
+            content = page_props.get("content", {})
+            current_season = content.get("seasonNumber")
+            web_url = content.get("webUrl", "")
+            if isinstance(current_season, int) and web_url:
+                return {current_season: f"https://www.amediateka.ru{web_url}"}
+
+            return {}
+
+        except Exception as e:
+            print(f"Amediateka _get_season_url_map error: {e}")
+            return {}
+
+
+    def build_season_url(self, url: str, season: int) -> str:
+        """
+        Синхронная версия не может использовать _get_season_url_map (она async).
+        Этот метод используется только как fallback — основной путь через get_season_url().
+        """
+        match = re.search(r'/watch/(series_\d+_[^/]+)/', url)
+        if match:
+            series_alias = match.group(1)
+            # Без season_id — будет работать только если Amediateka поддерживает редирект
+            return f"https://www.amediateka.ru/watch/{series_alias}/season_{season}"
+        return url
+
+
+    async def get_season_url(self, url: str, season: int) -> str:
+        """
+        Возвращает точный URL нужного сезона включая season_id.
+        Использовать вместо build_season_url для Amediateka.
+        """
+        season_map = await self._get_season_url_map(url)
+        if season in season_map:
+            return season_map[season]
+        # Fallback на синхронный метод
+        return self.build_season_url(url, season)

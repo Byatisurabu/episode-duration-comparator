@@ -211,6 +211,93 @@ class ImdbScraper(BaseScraper):
                 return min_val
 
         return None
+    
+    async def get_seasons(self, url: str) -> List[int]:
+        series_id = self._extract_series_id(url)
+        if not series_id:
+            return []
+
+        # Идём на ГЛАВНУЮ страницу сериала — там есть полный список сезонов
+        main_url = f"https://www.imdb.com/title/{series_id}/"
+
+        async with httpx.AsyncClient(headers=self.HEADERS, timeout=15.0) as client:
+            try:
+                resp = await client.get(main_url, follow_redirects=True)
+                if resp.status_code != 200:
+                    return []
+
+                html = resp.text
+
+                # Вариант 1 — ищем seasonNumber в __NEXT_DATA__ или script-блоках
+                # IMDb пишет что-то вроде: "numberOfSeasons":5
+                match = re.search(r'"numberOfSeasons"\s*:\s*(\d+)', html)
+                if match:
+                    total = int(match.group(1))
+                    return list(range(1, total + 1))
+
+                # Вариант 2 — ищем в тексте все упоминания "season":N
+                matches = re.findall(r'"seasonNumber"\s*:\s*(\d+)', html)
+                if matches:
+                    seasons = sorted(set(int(m) for m in matches))
+                    return seasons
+
+                # Вариант 3 — ищем select с выбором сезона (старая разметка)
+                soup = BeautifulSoup(html, "html.parser")
+                select = soup.find("select", {"id": "browse-episodes-season"})
+                if select:
+                    seasons = []
+                    for option in select.find_all("option"):
+                        val = option.get("value", "").strip()
+                        if val.isdigit():
+                            seasons.append(int(val))
+                    if seasons:
+                        return sorted(seasons)
+
+                # Вариант 4 — ищем ссылки вида /episodes?season=N на главной
+                season_nums = re.findall(r'episodes\?season=(\d+)', html)
+                if season_nums:
+                    return sorted(set(int(n) for n in season_nums))
+
+                return []
+
+            except Exception as e:
+                print(f"IMDb get_seasons error: {e}")
+                return []
+            
+    def _find_seasons_in_json(self, data, depth: int = 0) -> List[int]:
+        """Рекурсивно ищет список сезонов в произвольной JSON-структуре IMDb."""
+        if depth > 8:  # ограничение глубины рекурсии
+            return []
+
+        if isinstance(data, dict):
+            # IMDb часто хранит сезоны под ключами типа "seasons", "availableSeasons"
+            for key in ("seasons", "availableSeasons", "seasonNumbers"):
+                if key in data:
+                    val = data[key]
+                    if isinstance(val, list):
+                        nums = [int(v) for v in val if str(v).isdigit()]
+                        if nums:
+                            return nums
+            # Рекурсивно проверяем вложенные объекты
+            for v in data.values():
+                result = self._find_seasons_in_json(v, depth + 1)
+                if result:
+                    return result
+
+        elif isinstance(data, list):
+            for item in data:
+                result = self._find_seasons_in_json(item, depth + 1)
+                if result:
+                    return result
+
+        return []
+
+    def build_season_url(self, url: str, season: int) -> str:
+        """Строит URL страницы эпизодов конкретного сезона на IMDb."""
+        series_id = self._extract_series_id(url)
+        if not series_id:
+            return url
+        return f"https://www.imdb.com/title/{series_id}/episodes?season={season}"
 
     @staticmethod
     def _parse_runtime(text: str) -> Optional[int]:

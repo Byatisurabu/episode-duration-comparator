@@ -9,6 +9,7 @@ from app.scrapers.base import ScraperFactory
 from app.services.comparison import create_comparison_rows
 import asyncio
 import app.scrapers.factory
+from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI(
     title="Сравнитель длительности серий",
@@ -130,6 +131,84 @@ async def compare(
 
     return templates.TemplateResponse("result.html", context)
 
+@app.post("/get-seasons")
+async def get_seasons(
+    baseline_url: str = Form(...),
+    compared_url: str = Form(...),
+):
+    """
+    Принимает два URL сериалов, возвращает JSON со списками сезонов.
+    Вызывается из JS на главной странице после нажатия «Найти сезоны».
+    """
+    errors = []
+
+    if not baseline_url.strip() or not is_valid_url(baseline_url):
+        errors.append("Некорректный Baseline URL")
+    if not compared_url.strip() or not is_valid_url(compared_url):
+        errors.append("Некорректный Compared URL")
+
+    if errors:
+        return JSONResponse({"ok": False, "errors": errors}, status_code=400)
+
+    baseline_service, baseline_name = detect_service(baseline_url)
+    compared_service, compared_name = detect_service(compared_url)
+
+    if not baseline_service:
+        return JSONResponse(
+            {"ok": False, "errors": [f"Baseline: {baseline_name}"]},
+            status_code=400
+        )
+    if not compared_service:
+        return JSONResponse(
+            {"ok": False, "errors": [f"Compared: {compared_name}"]},
+            status_code=400
+        )
+
+    baseline_scraper = ScraperFactory.get_scraper(baseline_service)
+    compared_scraper = ScraperFactory.get_scraper(compared_service)
+
+    baseline_seasons, compared_seasons = await asyncio.gather(
+        baseline_scraper.get_seasons(baseline_url),
+        compared_scraper.get_seasons(compared_url),
+        return_exceptions=True
+    )
+
+    if isinstance(baseline_seasons, Exception):
+        baseline_seasons = []
+    if isinstance(compared_seasons, Exception):
+        compared_seasons = []
+
+    common_seasons = sorted(set(baseline_seasons) & set(compared_seasons))
+
+    # Строим точные URL для каждого сезона на каждом сервисе
+    all_seasons = sorted(set(baseline_seasons) | set(compared_seasons))
+
+    baseline_urls, compared_urls = await asyncio.gather(
+        asyncio.gather(*[
+            baseline_scraper.get_season_url(baseline_url, s) for s in all_seasons
+        ]),
+        asyncio.gather(*[
+            compared_scraper.get_season_url(compared_url, s) for s in all_seasons
+        ]),
+    )
+
+    season_urls = {
+        s: {
+            "baseline": baseline_urls[i],
+            "compared": compared_urls[i],
+        }
+        for i, s in enumerate(all_seasons)
+    }
+
+    print(f"DEBUG season_urls={season_urls}")
+
+    return JSONResponse({
+        "ok": True,
+        "baseline": {"service": baseline_name, "seasons": baseline_seasons},
+        "compared": {"service": compared_name, "seasons": compared_seasons},
+        "common_seasons": common_seasons,
+        "season_urls": season_urls,   # ← новое
+    })
 
 if __name__ == "__main__":
     import uvicorn

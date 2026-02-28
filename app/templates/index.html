@@ -11,63 +11,370 @@
             margin: 40px auto;
             padding: 20px;
             line-height: 1.6;
+            color: #1f2937;
         }
-        h1 { color: #0066cc; }
-        form { margin-top: 30px; }
-        input[type="url"] {
+        h1 { color: #0066cc; margin-bottom: 0.5rem; }
+        .subtitle {
+            color: #6b7280;
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+
+        /* ─── Шаг 1: поля URL ─────────────────────────────── */
+        .step { margin-bottom: 2rem; }
+        .step-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6b7280;
+            margin-bottom: 1rem;
+        }
+        .url-row {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .url-field label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 0.3rem;
+            color: #374151;
+        }
+        .url-field input {
             width: 100%;
-            padding: 12px;
-            margin: 8px 0;
-            border: 2px solid #ddd;
+            padding: 10px 14px;
+            border: 2px solid #d1d5db;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 15px;
+            box-sizing: border-box;
+            transition: border-color 0.15s;
         }
-        button {
-            background: #0066cc;
-            color: white;
-            padding: 14px 32px;
+        .url-field input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        /* ─── Кнопки ──────────────────────────────────────── */
+        .btn {
+            padding: 11px 28px;
             border: none;
             border-radius: 8px;
-            font-size: 18px;
+            font-size: 16px;
+            font-weight: 500;
             cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
         }
-        button:hover { background: #0055aa; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-success { background: #16a34a; color: white; }
+        .btn-success:hover { background: #15803d; }
+        .btn-success:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ─── Шаг 2: выбор сезона ─────────────────────────── */
+        #season-picker {
+            display: none;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        #season-picker.visible { display: block; }
+
+        .season-picker-title {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+        .season-info {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+        .season-info-block { font-size: 0.9rem; color: #6b7280; }
+        .season-info-block strong { color: #1f2937; }
+
+        .seasons-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .season-btn {
+            padding: 8px 18px;
+            border: 2px solid #d1d5db;
+            border-radius: 8px;
+            background: white;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: #374151;
+        }
+        .season-btn:hover {
+            border-color: #2563eb;
+            color: #2563eb;
+        }
+        .season-btn.selected {
+            border-color: #2563eb;
+            background: #2563eb;
+            color: white;
+            font-weight: 600;
+        }
+        .season-btn.only-baseline {
+            border-style: dashed;
+            border-color: #d97706;
+            color: #92400e;
+        }
+        .season-btn.only-compared {
+            border-style: dashed;
+            border-color: #7c3aed;
+            color: #4c1d95;
+        }
+        .season-legend {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            margin-top: 0.5rem;
+        }
+
+        /* ─── Статус / ошибки ────────────────────────────── */
+        #status {
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            min-height: 1.5rem;
+        }
+        .status-loading { color: #6b7280; }
+        .status-error {
+            background: #fef2f2;
+            color: #dc2626;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border-left: 4px solid #dc2626;
+        }
     </style>
 </head>
 <body>
-    <h1>📊 Сравнитель длительности серий</h1>
-    {% if error_messages %}
-        <div style="background:#ffebee; padding:16px; border-radius:8px; margin:16px 0; border-left:4px solid #c62828;">
-            <strong>Обнаружены ошибки:</strong>
-            <ul>
-                {% for err in error_messages %}
-                    <li>{{ err }}</li>
-                {% endfor %}
-            </ul>
+
+<h1>📊 Сравнитель длительности серий</h1>
+<p class="subtitle">
+    Сравниваем длительность серий на IMDb и Amediateka, чтобы найти купюры и цензуру.
+</p>
+
+{% if error_messages %}
+<div class="status-error" style="margin-bottom: 1.5rem;">
+    <strong>Ошибки:</strong>
+    <ul style="margin: 0.5rem 0 0; padding-left: 1.25rem;">
+        {% for err in error_messages %}
+            <li>{{ err }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- ─── Шаг 1: ввод URL ──────────────────────────────────── -->
+<div class="step">
+    <div class="step-label">Шаг 1 — Введите URL сериала на каждом сервисе</div>
+    <div class="url-row">
+        <div class="url-field">
+            <label for="baseline_url">Baseline (IMDb)</label>
+            <input type="url" id="baseline_url"
+                   placeholder="https://www.imdb.com/title/tt0903747/"
+                   value="{{ prev_baseline or '' }}">
         </div>
-    {% endif %}
-    
-
-    <p><strong>MVP v0.1</strong> — сравниваем baseline и compared</p>
-    <div style="margin: 1.5rem 0; font-size: 0.9rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
-        <div>Сравнение длительности видео-контента на различных стриминговых площадках.</div>
-        <div>Поддерживаемые сервисы: IMDB и Amediateka.</div>
-        <div>Для сравнения в качестве длительности по умолчанию рекомендуется брать IMDB. Но с учётом того, что этот сервис сам округляет длительность до целых минут.<br>
-        Небольшие изменения в длительности могут быть вызваны разным составом заставок компаний в начале и конце роликов, а также изменением финальных титров.</div>
+        <div class="url-field">
+            <label for="compared_url">Compared (Amediateka)</label>
+            <input type="url" id="compared_url"
+                   placeholder="https://www.amediateka.ru/watch/series_11353_.../season_1_..."
+                   value="{{ prev_compared or '' }}">
+        </div>
     </div>
+    <button class="btn btn-primary" id="find-seasons-btn" onclick="findSeasons()">
+        🔍 Найти сезоны
+    </button>
+</div>
 
-    <!-- Форма-заглушка (будет использоваться на Этапе 1.2) -->
-    <form action="/compare" method="post">
-        <label for="baseline">Baseline URL:</label><br>
-        <input type="url" id="baseline" name="baseline_url" placeholder="https://www.imdb.com/title/tt..." required><br><br>
+<!-- ─── Статус ───────────────────────────────────────────── -->
+<div id="status"></div>
 
-        <label for="compared">Compared URL:</label><br>
-        <input type="url" id="compared" name="compared_url" placeholder="https://www.amediateka.ru/..." required><br><br>
+<!-- ─── Шаг 2: выбор сезона ─────────────────────────────── -->
+<div id="season-picker">
+    <div class="season-picker-title">Шаг 2 — Выберите сезон для сравнения</div>
+    <div class="season-info">
+        <div class="season-info-block">
+            <strong>Baseline:</strong> <span id="info-baseline-service"></span><br>
+            Сезонов найдено: <span id="info-baseline-count"></span>
+        </div>
+        <div class="season-info-block">
+            <strong>Compared:</strong> <span id="info-compared-service"></span><br>
+            Сезонов найдено: <span id="info-compared-count"></span>
+        </div>
+    </div>
+    <div class="seasons-buttons" id="seasons-buttons"></div>
+    <div class="season-legend" id="season-legend"></div>
+</div>
 
-        <button type="submit">🚀 Сравнить</button>
-    </form>
+<!-- ─── Скрытая форма для запуска сравнения ─────────────── -->
+<form id="compare-form" action="/compare" method="post" style="display:none; margin-top:1.5rem;">
+    <input type="hidden" id="form-baseline-url" name="baseline_url">
+    <input type="hidden" id="form-compared-url" name="compared_url">
+    <button class="btn btn-success" type="submit">
+        🚀 Сравнить выбранный сезон
+    </button>
+</form>
 
-    <hr>
-    <small>Этап 1.8 — Вывод таблицы сравнения с цветовой индикацией ✅</small>
+<hr style="margin-top: 3rem; border-color: #e5e7eb;">
+<small style="color: #9ca3af;">
+    Поддерживаемые сервисы: IMDb и Amediateka &nbsp;·&nbsp;
+    Небольшие различия (≤1 мин) могут быть вызваны разными заставками и титрами.
+</small>
+
+<script>
+    // Данные о сезонах, полученные с сервера
+    let seasonData = null;
+
+    async function findSeasons() {
+        const baselineUrl = document.getElementById('baseline_url').value.trim();
+        const comparedUrl = document.getElementById('compared_url').value.trim();
+
+        // Сбрасываем предыдущее состояние
+        seasonData = null;
+        document.getElementById('compare-form').style.display = 'none';
+        document.getElementById('season-picker').classList.remove('visible');
+
+        if (!baselineUrl || !comparedUrl) {
+            showError('Введите оба URL.');
+            return;
+        }
+
+        // UI — показываем загрузку
+        const btn = document.getElementById('find-seasons-btn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Ищем сезоны...';
+        showStatus('Запрашиваем информацию о сезонах...', 'loading');
+
+        try {
+            const formData = new FormData();
+            formData.append('baseline_url', baselineUrl);
+            formData.append('compared_url', comparedUrl);
+
+            const resp = await fetch('/get-seasons', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await resp.json();
+
+            if (!data.ok) {
+                showError(data.errors ? data.errors.join(' ') : 'Неизвестная ошибка.');
+                return;
+            }
+
+            seasonData = data;
+            renderSeasonPicker(data);
+            clearStatus();
+
+        } catch (e) {
+            showError('Сетевая ошибка. Проверьте, что приложение запущено.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔍 Найти сезоны';
+        }
+    }
+
+    function renderSeasonPicker(data) {
+        document.getElementById('info-baseline-service').textContent = data.baseline.service;
+        document.getElementById('info-baseline-count').textContent = data.baseline.seasons.length;
+        document.getElementById('info-compared-service').textContent = data.compared.service;
+        document.getElementById('info-compared-count').textContent = data.compared.seasons.length;
+
+        // Все уникальные сезоны из обоих сервисов
+        const allSeasons = [...new Set([
+            ...data.baseline.seasons,
+            ...data.compared.seasons
+        ])].sort((a, b) => a - b);
+
+        const baselineSet = new Set(data.baseline.seasons);
+        const comparedSet = new Set(data.compared.seasons);
+
+        const container = document.getElementById('seasons-buttons');
+        container.innerHTML = '';
+
+        let hasOnlyBaseline = false;
+        let hasOnlyCompared = false;
+
+        for (const season of allSeasons) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = `Сезон ${season}`;
+            btn.className = 'season-btn';
+            btn.dataset.season = season;
+
+            if (!baselineSet.has(season)) {
+                btn.classList.add('only-compared');
+                btn.title = `Только на ${data.compared.service}`;
+                hasOnlyCompared = true;
+            } else if (!comparedSet.has(season)) {
+                btn.classList.add('only-baseline');
+                btn.title = `Только на ${data.baseline.service}`;
+                hasOnlyBaseline = true;
+            }
+
+            btn.addEventListener('click', () => selectSeason(season, btn));
+            container.appendChild(btn);
+        }
+
+        // Легенда
+        const legend = document.getElementById('season-legend');
+        const legendParts = [];
+        if (hasOnlyBaseline) legendParts.push(`пунктир оранжевый — только на ${data.baseline.service}`);
+        if (hasOnlyCompared) legendParts.push(`пунктир фиолетовый — только на ${data.compared.service}`);
+        legend.textContent = legendParts.join('  ·  ');
+
+        document.getElementById('season-picker').classList.add('visible');
+
+        // Если один общий сезон — выбираем автоматически
+        if (data.common_seasons.length === 1) {
+            const autoBtn = container.querySelector(`[data-season="${data.common_seasons[0]}"]`);
+            if (autoBtn) selectSeason(data.common_seasons[0], autoBtn);
+        }
+    }
+
+    function selectSeason(season, btnEl) {
+        // Снимаем выделение с предыдущей кнопки
+        document.querySelectorAll('.season-btn.selected')
+            .forEach(b => b.classList.remove('selected'));
+        btnEl.classList.add('selected');
+
+        // Берём готовые URL с сервера — не строим на клиенте
+        const urls = seasonData.season_urls[season];
+        document.getElementById('form-baseline-url').value = urls.baseline;
+        document.getElementById('form-compared-url').value = urls.compared;
+
+        document.getElementById('compare-form').style.display = 'block';
+    }
+
+    function showStatus(msg, type) {
+        const el = document.getElementById('status');
+        el.className = type === 'loading' ? 'status-loading' : '';
+        el.textContent = type === 'loading' ? `⏳ ${msg}` : msg;
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('status');
+        el.className = 'status-error';
+        el.textContent = msg;
+    }
+
+    function clearStatus() {
+        const el = document.getElementById('status');
+        el.className = '';
+        el.textContent = '';
+    }
+</script>
+
 </body>
 </html>
