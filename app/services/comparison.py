@@ -1,13 +1,14 @@
-# В конец файла main.py (или создай новый файл services/comparison.py и импортируй)
+# app/services/comparison.py
+
+from app.config import DiffThresholds
+
 
 def create_comparison_rows(baseline_eps, compared_eps):
     """Создаёт плоский список для таблицы сравнения"""
-    from collections import defaultdict
 
-    # Собираем все уникальные (season, episode)
-    all_keys = set()
     base_dict = {}
     comp_dict = {}
+    all_keys = set()
 
     for ep in baseline_eps:
         key = (ep.season, ep.episode)
@@ -32,6 +33,7 @@ def create_comparison_rows(baseline_eps, compared_eps):
         diff_min = None
         diff_percent = None
         color_class = "neutral"
+        abs_p = 0
 
         if dur_b is not None and dur_c is not None and dur_b > 0:
             diff_min = dur_c - dur_b
@@ -39,22 +41,20 @@ def create_comparison_rows(baseline_eps, compared_eps):
             abs_p = abs(diff_percent)
             abs_m = abs(diff_min)
 
-            # Главное правило: если разница ≤ 1 минута → всегда считаем незначительной
-            if abs_m <= 1 or abs_p < 3:
+            if abs_m <= DiffThresholds.MINUTES_INSIGNIFICANT or abs_p < DiffThresholds.PERCENT_SMALL:
                 color_class = "small-diff"
-            elif abs_p < 5:
+            elif abs_p < DiffThresholds.PERCENT_MEDIUM:
                 color_class = "medium-diff"
             else:
-                # ≥ 5% и больше 1 минуты
-                color_class = "large-red" if diff_min < 0 else "large-green" 
-            
+                color_class = "large-red" if diff_min < 0 else "large-green"
+
         row_class = ""
         if b is None:
             row_class = "missing-baseline"
         elif c is None:
             row_class = "missing-compared"
-        elif abs_p >= 5:
-            row_class = "highlight-strong" if diff_min < 0 else "highlight-weak"                        
+        elif abs_p >= DiffThresholds.PERCENT_MEDIUM:
+            row_class = "highlight-strong" if diff_min < 0 else "highlight-weak"
 
         rows.append({
             "season": season,

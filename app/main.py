@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from app.services.detector import detect_service
 from app.scrapers.base import ScraperFactory
 from app.services.comparison import create_comparison_rows
+from app.config import DiffColors, DiffThresholds
 import asyncio
 import app.scrapers.factory
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -42,7 +43,8 @@ async def home(request: Request):
 async def compare(
     request: Request,
     baseline_url: str = Form(...),
-    compared_url: str = Form(...)
+    compared_url: str = Form(...),
+    season_urls_json: str = Form(default=""),
 ):
     errors = []
 
@@ -109,24 +111,38 @@ async def compare(
         compared_result.episodes
     )
 
+    import json as _json
+    try:
+        season_urls = _json.loads(season_urls_json) if season_urls_json else {}
+        # JSON ключи всегда строки — конвертируем в int
+        season_urls = {int(k): v for k, v in season_urls.items()}
+    except Exception:
+        season_urls = {}
+
     context = {
         "request": request,
         "title": "Сравнение длительности серий",
-        
+
         # Baseline блок
         "baseline_name": baseline_name,
         "baseline_series_title": baseline_result.series_title or "—",
         "baseline_url": baseline_url,
-        
+
         # Compared блок
         "compared_name": compared_name,
         "compared_series_title": compared_result.series_title or "—",
         "compared_url": compared_url,
-        
+
         # Таблица
         "comparison_rows": comparison_rows,
-        
         "total_episodes": len(comparison_rows),
+
+        # Цвета и пороги из config.py — используются в легенде и CSS-переменных
+        "colors": DiffColors,
+        "thresholds": DiffThresholds,
+
+        # Все сезоны сериала — для переключения сезона прямо со страницы результатов
+        "season_urls": season_urls,
     }
 
     return templates.TemplateResponse("result.html", context)
@@ -199,8 +215,6 @@ async def get_seasons(
         }
         for i, s in enumerate(all_seasons)
     }
-
-    print(f"DEBUG season_urls={season_urls}")
 
     return JSONResponse({
         "ok": True,

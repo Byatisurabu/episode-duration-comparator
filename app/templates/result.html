@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
     <link rel="stylesheet" href="/static/css/main.css">
+    <style>
+        /* CSS-переменные цветов — значения приходят из app/config.py → DiffColors */
+        :root {
+            --color-small:       {{ colors.SMALL }};
+            --color-medium:      {{ colors.MEDIUM }};
+            --color-large-red:   {{ colors.LARGE_RED }};
+            --color-large-green: {{ colors.LARGE_GREEN }};
+            --color-row-red:     {{ colors.ROW_HIGHLIGHT_RED }};
+            --color-row-green:   {{ colors.ROW_HIGHLIGHT_GREEN }};
+        }
+    </style>
 </head>
 <body>
 
@@ -22,11 +33,12 @@
     <a href="{{ compared_url }}" target="_blank">{{ compared_url }}</a>
 </div>
 
+<!-- Легенда — пороги берутся из config.py через контекст шаблона -->
 <div style="margin: 1.5rem 0; font-size: 0.9rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
-    <div><span style="color:#6b7280">■</span> Разница < 3% или ≤ 1 мин.</div>
-    <div><span style="color:#d97706">■</span> Разница 3–5%</div>
-    <div><span style="color:#dc2626">■</span> Сокращение ≥ 5%</div>
-    <div><span style="color:#16a34a">■</span> Увеличение ≥ 5%</div>
+    <div><span style="color: var(--color-small)">■</span> Разница &lt; {{ thresholds.PERCENT_SMALL }}% или &le; {{ thresholds.MINUTES_INSIGNIFICANT }} мин.</div>
+    <div><span style="color: var(--color-medium)">■</span> Разница {{ thresholds.PERCENT_SMALL }}–{{ thresholds.PERCENT_MEDIUM }}%</div>
+    <div><span style="color: var(--color-large-red)">■</span> Сокращение &ge; {{ thresholds.PERCENT_MEDIUM }}%</div>
+    <div><span style="color: var(--color-large-green)">■</span> Увеличение &ge; {{ thresholds.PERCENT_MEDIUM }}%</div>
 </div>
 
 <table>
@@ -47,17 +59,17 @@
         <tr class="{{ row.row_class }}">
             <td><strong>{{ row.season }}</strong></td>
             <td><strong>{{ row.episode }}</strong></td>
-            
+
             <td>{{ row.title_baseline }}</td>
             <td class="duration">
                 {% if row.duration_baseline %}{{ row.duration_baseline }} мин{% else %}—{% endif %}
             </td>
-            
+
             <td>{{ row.title_compared }}</td>
             <td class="duration">
                 {% if row.duration_compared %}{{ row.duration_compared }} мин{% else %}—{% endif %}
             </td>
-            
+
             <td>
                 {% if row.diff_min is not none %}
                     <span class="{{ row.color_class }}">
@@ -67,7 +79,7 @@
                     —
                 {% endif %}
             </td>
-            
+
             <td>
                 {% if row.diff_percent is not none %}
                     <span class="{{ row.color_class }}" title="Baseline: {{ row.duration_baseline }} мин → Compared: {{ row.duration_compared }} мин">
@@ -85,6 +97,39 @@
 <p style="margin-top: 2rem;">
     <a href="/" style="color:#2563eb; font-weight:500;">← Новое сравнение</a>
 </p>
+
+{% if season_urls and season_urls|length > 1 %}
+<script id="season-urls-data" type="application/json">{{ season_urls | tojson }}</script>
+<div style="margin-top: 1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:1.25rem;">
+    <div style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#6b7280; margin-bottom:0.85rem;">
+        Сравнить другой сезон этого сериала
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+        {% for season, urls in season_urls.items() | sort %}
+            {% if urls.baseline == baseline_url and urls.compared == compared_url %}
+                <span style="padding:7px 16px; border:2px solid #2563eb; border-radius:8px; background:#2563eb; color:white; font-size:14px; font-weight:600;">
+                    Сезон {{ season }}
+                </span>
+            {% else %}
+                <form method="post" action="/compare" style="margin:0;" onsubmit="injectSeasonUrls(this)">
+                    <input type="hidden" name="baseline_url" value="{{ urls.baseline }}">
+                    <input type="hidden" name="compared_url" value="{{ urls.compared }}">
+                    <input type="hidden" name="season_urls_json">
+                    <button type="submit" style="padding:7px 16px; border:2px solid #d1d5db; border-radius:8px; background:white; color:#374151; font-size:14px; cursor:pointer; transition:border-color 0.15s;">
+                        Сезон {{ season }}
+                    </button>
+                </form>
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
+<script>
+    function injectSeasonUrls(form) {
+        const json = document.getElementById('season-urls-data').textContent;
+        form.querySelector('[name="season_urls_json"]').value = json;
+    }
+</script>
+{% endif %}
 
 </body>
 </html>

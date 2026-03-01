@@ -106,9 +106,17 @@ class AmediatekaScraper(BaseScraper):
                     .get("pageProps", {})
                     .get("content", {})
                 )
-                series_title = content.get("series", {}).get("title")
+                content_type = content.get("type")
+
+                if content_type == "series":
+                    # Головная страница сериала — название прямо в content.title
+                    series_title = content.get("title")
+                else:
+                    # Страница сезона — название в content.series.title
+                    series_title = content.get("series", {}).get("title")
+
                 if series_title and isinstance(series_title, str):
-                    print(f"Amediateka: название из JSON → {series_title}")
+                    # print(f"Amediateka: название из JSON ({content_type}) → {series_title}")
                     return series_title.strip()
             except Exception as e:
                 print(f"Amediateka: ошибка в JSON → {e}")
@@ -158,25 +166,37 @@ class AmediatekaScraper(BaseScraper):
         try:
             data = json.loads(match.group(1))
             page_props = data.get("props", {}).get("pageProps", {})
+            content = page_props.get("content", {})
+            content_type = content.get("type")
 
-            # Источник 1 — ссылки из longDescription содержат полный URL с season_id
-            # Формат: /watch/series_11353_klient-vsegda-mertv/season_1_11976
-            series_content = page_props.get("seriesContent", {})
-            long_desc = series_content.get("longDescription", "")
-            if long_desc:
-                # Извлекаем пары (номер_сезона, полный_путь)
-                matches = re.findall(
+            # Хелпер: извлечь season_map из любой строки с HTML-ссылками
+            def extract_from_long_desc(long_desc: str) -> dict:
+                if not long_desc:
+                    return {}
+                found = re.findall(
                     r'href="(https://www\.amediateka\.ru)?(/watch/series_\d+_[^/]+/season_(\d+)_\d+)"',
                     long_desc
                 )
-                if matches:
-                    season_map = {}
-                    for _, path, season_num in matches:
-                        season_map[int(season_num)] = f"https://www.amediateka.ru{path}"
+                return {
+                    int(season_num): f"https://www.amediateka.ru{path}"
+                    for _, path, season_num in found
+                }
+
+            # Источник 1а — головная страница сериала (content.type == "series")
+            # longDescription лежит прямо в content
+            if content_type == "series":
+                season_map = extract_from_long_desc(content.get("longDescription", ""))
+                if season_map:
                     return season_map
 
+            # Источник 1б — страница сезона (content.type == "season")
+            # longDescription лежит в seriesContent
+            series_content = page_props.get("seriesContent", {})
+            season_map = extract_from_long_desc(series_content.get("longDescription", ""))
+            if season_map:
+                return season_map
+
             # Источник 2 — fallback: только текущий сезон из content
-            content = page_props.get("content", {})
             current_season = content.get("seasonNumber")
             web_url = content.get("webUrl", "")
             if isinstance(current_season, int) and web_url:
