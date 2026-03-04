@@ -91,8 +91,11 @@ async def received_baseline_url(update: Update, context: ContextTypes.DEFAULT_TY
     scraper = ScraperFactory.get_scraper(service)
     title = await scraper.get_series_title(url)
     seasons = await scraper.get_seasons(url)
-    seasons_str = f"{len(seasons)} сезонов" if seasons else "сезоны не найдены"
-    preview = f"✅ Для сравнения: Сериал *{escape(title or name)}*, найдено {seasons_str}"
+    seasons_str = f"{len(seasons)}" if seasons else "сезоны не найдены"
+    if isinstance(title, str):
+        preview = f"✅ Для сравнения: Сериал *{escape(title)}*, найдено сезонов: {seasons_str}"
+    else:
+        preview = f"✅ Для сравнения: Сериал *{escape(name)}*, найдено сезонов: {seasons_str}"
 
     await update.message.reply_text(
         f"{preview}\n\n"
@@ -212,6 +215,13 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Шаг 3 — получили выбор сезона, запускаем сравнение."""
     text = update.message.text.strip()
 
+    if update.message.text == "Новое сравнение":
+        await update.message.reply_text(
+            "🔄 Выбери базовый сериал для нового сравнения:",
+            reply_markup=ReplyKeyboardRemove(), 
+        )
+        return WAIT_BASELINE_URL  
+
     match = re.search(r"\d+", text)
     if not match:
         await update.message.reply_text(
@@ -278,7 +288,8 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
     other_seasons = [s for s in common_seasons if s != season]
 
     if other_seasons:
-        keyboard = [[f"Сезон {s}" for s in other_seasons]]
+        keyboard = [[f"Сезон {s}" for s in other_seasons],
+            ["Новое сравнение"]]
         markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text(
             "🔄 Сравнить другой сезон этого же сериала?",

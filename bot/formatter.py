@@ -5,6 +5,9 @@
 
 from app.config import DiffThresholds
 
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 def format_comparison(
     baseline_name: str,
@@ -14,6 +17,7 @@ def format_comparison(
     rows: list[dict],
     season: int,
 ) -> str:
+    
     lines = []
 
     lines.append(f"📊 *Сравнение сезона {season}*")
@@ -25,13 +29,17 @@ def format_comparison(
     significant = []
     medium = []
     missing = []
+    significant_counter = 0
+    medium_counter = 0
+    missing_counter = 0
 
     for row in rows:
         ep_label = f"S{row['season']:02d}E{row['episode']:02d}"
 
         if row.get("missing_in_baseline") or row.get("missing_in_compared"):
             where = compared_name if row.get("missing_in_baseline") else baseline_name
-            missing.append(f"  ❓ {ep_label} — только на {escape(where)}")
+            missing_counter += 1
+            lines.append(f"  ❓ {ep_label} — только на {escape(where)}")
             continue
 
         dur_b = row["duration_baseline"]
@@ -47,48 +55,43 @@ def format_comparison(
 
         if color in ("large-red", "large-green"):
             emoji = "🟢" if diff > 0 else "🔴"
-            significant.append(
-                f"  {emoji} {ep_label}: {dur_b}м → {dur_c}м "
-                f"\\({sign}{diff}м, {sign}{pct}%\\)"
+            line = f" {emoji} {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м, {sign}{pct}%)"
+            # significant.append(
+            significant_counter += 1
+            lines.append(
+                escape(line)
             )
         elif color == "medium-diff":
-            medium.append(
-                f"  🟡 {ep_label}: {dur_b}м → {dur_c}м \\({sign}{diff}м\\)"
+            line = f" 🟡 {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м)"
+            # medium.append(
+            medium_counter += 1
+            lines.append(
+                escape(line)
+            )
+        else:
+            line = f" ⚪ {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м)"
+            # medium.append(
+            medium_counter += 1
+            lines.append(
+                escape(line)
             )
 
-    total = len(rows)
-    sig_count = len(significant)
+    lines.append("")
 
-    if not significant and not medium and not missing:
+    total = len(rows)
+
+    # if not significant and not medium and not missing:
+    if significant_counter + medium_counter + missing_counter == 0:
         lines.append(
             "✅ Значимых различий не найдено\\. "
             f"Все эпизоды совпадают в пределах {DiffThresholds.MINUTES_INSIGNIFICANT} мин\\."
         )
-    else:
-        if significant:
-            lines.append(
-                f"*Значимые отличия \\(≥{DiffThresholds.PERCENT_MEDIUM}%\\):*"
-            )
-            lines.extend(significant)
-            lines.append("")
 
-        if medium:
-            lines.append(
-                f"*Небольшие отличия "
-                f"\\({DiffThresholds.PERCENT_SMALL}–{DiffThresholds.PERCENT_MEDIUM}%\\):*"
-            )
-            lines.extend(medium)
-            lines.append("")
-
-        if missing:
-            lines.append("*Отсутствующие эпизоды:*")
-            lines.extend(missing)
-            lines.append("")
-
-    content = f"Всего эпизодов: {total}, с отличиями ≥{DiffThresholds.PERCENT_MEDIUM}%: {sig_count}"
+    content = f"Всего эпизодов: {total}, с отличиями ≥{DiffThresholds.PERCENT_MEDIUM}%: {significant_counter}"
     lines.append(f"_{escape(content)}_")
 
     return "\n".join(lines)
+
 
 
 def escape(text: str) -> str:
