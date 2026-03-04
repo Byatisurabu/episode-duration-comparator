@@ -9,12 +9,14 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
 
-  bot:  
+  bot:
     build: .
+    container_name: episode-comparator-bot
     command: ["python", "-m", "bot.main"]
+    restart: unless-stopped
     environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
       - BOT_TOKEN=${BOT_TOKEN}
-      - APP_URL=http://app:8000
     depends_on:
       - app
-    restart: unless-stopped

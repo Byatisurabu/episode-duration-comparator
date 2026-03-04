@@ -18,6 +18,7 @@ COPY --from=builder /install /usr/local
 
 # Копируем код приложения
 COPY app/ ./app/
+COPY bot/ ./bot/
 
 # Не запускаем от root
 RUN useradd -m appuser
