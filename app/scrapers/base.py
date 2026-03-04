@@ -28,6 +28,13 @@ class BaseScraper(ABC):
         return self.build_season_url(url, season)
 
     @abstractmethod
+    async def get_series_title(self, url: str) -> Optional[str]:
+        """
+        Извлечь название сериала из главной страницы.
+        """
+        pass
+
+    @abstractmethod
     def build_season_url(self, url: str, season: int) -> str:
         """
         Построить URL конкретного сезона из любого URL сериала.

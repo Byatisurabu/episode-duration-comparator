@@ -299,6 +299,12 @@ class ImdbScraper(BaseScraper):
             return url
         return f"https://www.imdb.com/title/{series_id}/episodes?season={season}"
 
+    async def get_series_title(self, url: str) -> Optional[str]:
+        series_id = self._extract_series_id(url)
+        if not series_id:
+            return None
+        return await self._get_series_title(series_id)
+
     @staticmethod
     def _parse_runtime(text: str) -> Optional[int]:
         text = text.replace(" ", "").lower()

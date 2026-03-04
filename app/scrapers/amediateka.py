@@ -232,3 +232,9 @@ class AmediatekaScraper(BaseScraper):
             return season_map[season]
         # Fallback на синхронный метод
         return self.build_season_url(url, season)
+
+    async def get_series_title(self, url: str) -> Optional[str]:
+        html = await self._fetch_page(url)
+        if not html:
+            return None
+        return self._extract_series_title(html)

@@ -46,7 +46,7 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
 
     await update.message.reply_text(
-        "🔗 *Шаг 1 из 3* — Отправь IMDb URL сериала\\.\n\n"
+        "🔗 *Шаг 1 из 3* — Отправь URL сериала на первом ресурсе \\(например IMDB\\)\\.\n\n"
         "Подойдёт любая страница сериала или сезона, например:\n"
         "`https://www\\.imdb\\.com/title/tt0248654/`\n\n"
         "/cancel — отменить",
@@ -87,9 +87,16 @@ async def received_baseline_url(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data["baseline_service"] = service
     context.user_data["baseline_name"] = name
 
+    # Preview: название + сезоны
+    scraper = ScraperFactory.get_scraper(service)
+    title = await scraper.get_series_title(url)
+    seasons = await scraper.get_seasons(url)
+    seasons_str = f"{len(seasons)} сезонов" if seasons else "сезоны не найдены"
+    preview = f"✅ Для сравнения: Сериал *{escape(title or name)}*, найдено {seasons_str}"
+
     await update.message.reply_text(
-        f"✅ Baseline: *{escape(name)}*\n\n"
-        f"🔗 *Шаг 2 из 3* — Отправь Amediateka URL того же сериала\\.\n\n"
+        f"{preview}\n\n"
+        f"🔗 *Шаг 2 из 3* — Отправь URL того же сериала на другом сервисе\\.\n\n"
         f"Подойдёт ссылка на сериал или на любой его сезон, например:\n"
         f"`https://www\\.amediateka\\.ru/watch/series\\_11353\\_klient\\-vsegda\\-mertv/`\n\n"
         f"/cancel — отменить",
@@ -225,8 +232,8 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     await update.message.reply_text(
-        f"⏳ Собираю данные по сезону {season}\\.\\.\\.",
-        parse_mode="MarkdownV2",
+        f"⏳ Скрейпинг сезона {season}...",
+        parse_mode=None,
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -234,10 +241,15 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
     baseline_scraper = ScraperFactory.get_scraper(context.user_data["baseline_service"])
     compared_scraper = ScraperFactory.get_scraper(context.user_data["compared_service"])
 
-    baseline_result, compared_result = await asyncio.gather(
-        baseline_scraper.scrape_episodes(urls["baseline"]),
-        compared_scraper.scrape_episodes(urls["compared"]),
-    )
+    await update.message.reply_text("📥 Загружаем baseline...", parse_mode=None)
+
+    baseline_result = await baseline_scraper.scrape_episodes(urls["baseline"])
+
+    await update.message.reply_text(f"✅ Baseline готов ({len(baseline_result.episodes) if baseline_result.episodes else 0} эп.). Загружаем compared...", parse_mode=None)
+
+    compared_result = await compared_scraper.scrape_episodes(urls["compared"])
+
+    await update.message.reply_text("⚙️ Сравниваем и форматируем...", parse_mode=None)
 
     rows = create_comparison_rows(baseline_result.episodes, compared_result.episodes)
 

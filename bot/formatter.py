@@ -85,10 +85,8 @@ def format_comparison(
             lines.extend(missing)
             lines.append("")
 
-    lines.append(
-        f"_Всего эпизодов: {total}, с отличиями "
-        f"≥{DiffThresholds.PERCENT_MEDIUM}%: {sig_count}_"
-    )
+    content = f"Всего эпизодов: {total}, с отличиями ≥{DiffThresholds.PERCENT_MEDIUM}%: {sig_count}"
+    lines.append(f"_{escape(content)}_")
 
     return "\n".join(lines)
 
