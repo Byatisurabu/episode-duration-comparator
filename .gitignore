@@ -8,3 +8,5 @@ dist/
 build/
 *.log
 episode-duration-comparator.zip
+.vscode/launch.json
+KNOWNBUGS.md
