@@ -1,15 +1,16 @@
 # app/scrapers/amediateka.py
 import re
 import json
-import asyncio
+import logging
 from typing import Optional, List
 
 import httpx
-from bs4 import BeautifulSoup
 
 from app.scrapers.base import BaseScraper
 from app.models import Episode, ScrapeResult
 from app.services.normalizer import normalize_duration
+
+logger = logging.getLogger(__name__)
 
 
 class AmediatekaScraper(BaseScraper):
@@ -38,17 +39,17 @@ class AmediatekaScraper(BaseScraper):
             try:
                 resp = await client.get(url)
                 if resp.status_code != 200:
-                    print(f"Amediateka → {resp.status_code}")
+                    logger.warning("Amediateka → status %d", resp.status_code)
                     return None
                 return resp.text
             except Exception as e:
-                print(f"Ошибка запроса Amediateka: {e}")
+                logger.error("Ошибка запроса Amediateka: %s", e)
                 return None
 
     def _parse_next_data(self, html: str) -> list[Episode]:
         match = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
         if not match:
-            print("Не найден __NEXT_DATA__ на Amediateka")
+            logger.warning("Не найден __NEXT_DATA__ на Amediateka")
             return []
 
         try:
@@ -58,12 +59,12 @@ class AmediatekaScraper(BaseScraper):
             content = page_props.get("content", {})
 
             if content.get("type") != "season":
-                print("content.type != 'season' → возможно не страница сезона")
+                logger.warning("content.type != 'season' → возможно не страница сезона")
                 return []
 
             episodes_raw = content.get("episodes", [])
             if not episodes_raw:
-                print("episodes пустой массив")
+                logger.warning("episodes пустой массив")
                 return []
 
             episodes = []
@@ -89,10 +90,10 @@ class AmediatekaScraper(BaseScraper):
             return episodes
 
         except json.JSONDecodeError as e:
-            print(f"JSON decode error в __NEXT_DATA__: {e}")
+            logger.error("JSON decode error в __NEXT_DATA__: %s", e)
             return []
         except Exception as e:
-            print(f"Ошибка парсинга __NEXT_DATA__: {e}")
+            logger.error("Ошибка парсинга __NEXT_DATA__: %s", e)
             return []
 
     async def _extract_series_title(self, html: str) -> Optional[str]:
@@ -119,7 +120,7 @@ class AmediatekaScraper(BaseScraper):
                     # print(f"Amediateka: название из JSON ({content_type}) → {series_title}")
                     return series_title.strip()
             except Exception as e:
-                print(f"Amediateka: ошибка в JSON → {e}")
+                logger.error("Amediateka: ошибка в JSON → %s", e)
 
         # Приоритет 2 — fallback на <title> страницы
         from bs4 import BeautifulSoup
@@ -135,10 +136,10 @@ class AmediatekaScraper(BaseScraper):
                 # Убираем возможный хвост с сезоном
                 candidate = re.sub(r'(Сезон|Season)\s*\d+.*$', '', candidate, flags=re.I).strip()
                 if candidate:
-                    print(f"Amediateka: название из <title> → {candidate}")
+                    logger.info("Amediateka: название из <title> → %s", candidate)
                     return candidate
 
-        print("Amediateka: название сериала не удалось извлечь")
+        logger.warning("Amediateka: название сериала не удалось извлечь")
         return None
 
     async def get_seasons(self, url: str) -> List[int]:
@@ -205,7 +206,7 @@ class AmediatekaScraper(BaseScraper):
             return {}
 
         except Exception as e:
-            print(f"Amediateka _get_season_url_map error: {e}")
+            logger.error("Amediateka _get_season_url_map error: %s", e)
             return {}
 
 
