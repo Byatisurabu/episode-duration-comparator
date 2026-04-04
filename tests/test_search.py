@@ -2,11 +2,9 @@
 #
 # Тесты для app/services/search.py
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.search import search_series, SearchResult
-
+from app.services.search import search_series
 
 # ── Фикстуры ─────────────────────────────────────────────────────────────────
 

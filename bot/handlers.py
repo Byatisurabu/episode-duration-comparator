@@ -7,24 +7,23 @@ import asyncio
 import logging
 import re
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (
+    CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     ConversationHandler,
-    CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     filters,
 )
 
-from app.services.detector import detect_service
+from app.cache.sqlite_cache import EpisodeCache
 from app.scrapers.base import ScraperFactory
 from app.scrapers.cached import CachedScraper
-from app.cache.sqlite_cache import EpisodeCache
 from app.services.comparison import create_comparison_rows
+from app.services.detector import detect_service
 from app.services.search import search_series
 from bot.formatter import escape, format_comparison, split_message
-import app.scrapers.factory  # регистрирует скрейперы в ScraperFactory
 
 # Общий кеш для бота (тот же data/cache.db что и у веб-приложения)
 _cache = EpisodeCache()

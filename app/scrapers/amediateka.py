@@ -1,13 +1,13 @@
 # app/scrapers/amediateka.py
-import re
 import json
 import logging
-from typing import Optional, List
+import re
+from typing import List, Optional
 
 import httpx
 
-from app.scrapers.base import BaseScraper
 from app.models import Episode, ScrapeResult
+from app.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 

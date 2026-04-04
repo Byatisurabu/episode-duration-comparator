@@ -1,6 +1,5 @@
-import pytest
-from app.services.comparison import create_comparison_rows
 from app.models import Episode
+from app.services.comparison import create_comparison_rows
 
 
 def _ep(season, episode, title, duration_min):

@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from app.models import Episode, ScrapeResult
+from app.models import ScrapeResult
 
 
 class BaseScraper(ABC):
@@ -13,10 +13,6 @@ class BaseScraper(ABC):
 
     @abstractmethod
     async def get_seasons(self, url: str) -> List[int]:
-        pass
-
-    @abstractmethod
-    def build_season_url(self, url: str, season: int) -> str:
         pass
 
     async def get_season_url(self, url: str, season: int) -> str:

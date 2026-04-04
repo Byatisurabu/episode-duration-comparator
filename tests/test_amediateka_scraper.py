@@ -1,6 +1,8 @@
-import pytest
 import json
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from app.scrapers.amediateka import AmediatekaScraper
 
 

@@ -1,6 +1,7 @@
 import re
 from typing import Optional, Union
 
+
 def normalize_duration(raw: Union[str, int, float, None]) -> Optional[int]:
     """
     Приводит любое представление длительности к минутам (int) или None.

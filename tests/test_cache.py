@@ -1,9 +1,9 @@
-import pytest
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import patch
 
-from app.cache.sqlite_cache import EpisodeCache, _serialize, _deserialize
+import pytest
+
+from app.cache.sqlite_cache import EpisodeCache, _deserialize, _serialize
 from app.models import Episode, ScrapeResult
 
 

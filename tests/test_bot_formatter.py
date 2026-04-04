@@ -1,5 +1,4 @@
-import pytest
-from bot.formatter import escape, split_message, format_comparison
+from bot.formatter import escape, format_comparison, split_message
 
 
 class TestEscape:
