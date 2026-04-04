@@ -26,20 +26,39 @@
 
 <!-- Шаг 1: ввод URL -->
 <div class="step">
-    <div class="step-label">Шаг 1 — Введите URL сериала на каждом сервисе</div>
+    <div class="step-label">Шаг 1 — Введите URL или название сериала</div>
     <div class="url-row">
+
+        <!-- Baseline: IMDb с поиском по названию -->
         <div class="url-field">
-            <label for="baseline_url">Baseline (IMDb)</label>
+            <label for="baseline_search">Baseline (IMDb)</label>
+
+            <!-- Поиск по названию -->
+            <div class="search-wrapper" id="baseline-search-wrapper">
+                <input type="text" id="baseline_search"
+                       class="search-input"
+                       placeholder="Введите название сериала..."
+                       autocomplete="off"
+                       oninput="onSearchInput(this, 'baseline')"
+                       onfocus="onSearchFocus('baseline')"
+                       onblur="onSearchBlur('baseline')">
+                <div class="search-dropdown" id="baseline-dropdown"></div>
+            </div>
+
+            <!-- URL (заполняется автоматически или вручную) -->
             <input type="url" id="baseline_url"
-                   placeholder="https://www.imdb.com/title/tt0903747/"
+                   placeholder="или вставьте URL: https://www.imdb.com/title/tt..."
                    value="{{ prev_baseline or '' }}">
         </div>
+
+        <!-- Compared: Amediateka, только URL -->
         <div class="url-field">
             <label for="compared_url">Compared (Amediateka)</label>
             <input type="url" id="compared_url"
-                   placeholder="https://www.amediateka.ru/watch/series_11353_.../season_1_..."
+                   placeholder="https://www.amediateka.ru/watch/series_.../season_1_..."
                    value="{{ prev_compared or '' }}">
         </div>
+
     </div>
     <button class="btn btn-primary" id="find-seasons-btn" onclick="findSeasons()">
         🔍 Найти сезоны
@@ -84,6 +103,88 @@
 
 <script>
     let seasonData = null;
+    let searchTimers = {};
+
+    // ── Поиск по названию ────────────────────────────────────────────────────
+
+    function onSearchInput(input, field) {
+        const q = input.value.trim();
+        clearTimeout(searchTimers[field]);
+        if (q.length < 2) {
+            hideDropdown(field);
+            return;
+        }
+        searchTimers[field] = setTimeout(() => fetchSearch(q, field), 300);
+    }
+
+    function onSearchFocus(field) {
+        const q = document.getElementById(`${field}_search`).value.trim();
+        if (q.length >= 2) {
+            document.getElementById(`${field}-dropdown`).style.display = 'block';
+        }
+    }
+
+    function onSearchBlur(field) {
+        // Задержка — чтобы клик по dropdown успел сработать
+        setTimeout(() => hideDropdown(field), 200);
+    }
+
+    async function fetchSearch(q, field) {
+        try {
+            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const data = await resp.json();
+            if (!data.ok) return;
+            renderDropdown(data.results, field);
+        } catch (e) {
+            hideDropdown(field);
+        }
+    }
+
+    function renderDropdown(results, field) {
+        const dropdown = document.getElementById(`${field}-dropdown`);
+        dropdown.innerHTML = '';
+
+        if (!results.length) {
+            dropdown.innerHTML = '<div class="search-no-results">Ничего не найдено</div>';
+            dropdown.style.display = 'block';
+            return;
+        }
+
+        for (const r of results) {
+            const item = document.createElement('div');
+            item.className = 'search-item';
+            item.innerHTML = `
+                ${r.poster_url
+                    ? `<img class="search-poster" src="${r.poster_url}" alt="" loading="lazy">`
+                    : `<div class="search-poster-placeholder"></div>`
+                }
+                <div class="search-meta">
+                    <div class="search-title">${escapeHtml(r.title)}</div>
+                    <div class="search-year">${r.year || ''}</div>
+                </div>
+            `;
+            item.addEventListener('mousedown', () => selectSearchResult(r, field));
+            dropdown.appendChild(item);
+        }
+        dropdown.style.display = 'block';
+    }
+
+    function selectSearchResult(result, field) {
+        document.getElementById(`${field}_search`).value = result.title;
+        document.getElementById(`${field}_url`).value = result.url;
+        hideDropdown(field);
+    }
+
+    function hideDropdown(field) {
+        const d = document.getElementById(`${field}-dropdown`);
+        if (d) d.style.display = 'none';
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Поиск сезонов ─────────────────────────────────────────────────────────
 
     async function findSeasons() {
         const baselineUrl = document.getElementById('baseline_url').value.trim();

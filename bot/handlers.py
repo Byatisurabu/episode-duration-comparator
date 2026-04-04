@@ -7,12 +7,13 @@ import asyncio
 import logging
 import re
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ContextTypes,
     ConversationHandler,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
 )
 
@@ -21,6 +22,7 @@ from app.scrapers.base import ScraperFactory
 from app.scrapers.cached import CachedScraper
 from app.cache.sqlite_cache import EpisodeCache
 from app.services.comparison import create_comparison_rows
+from app.services.search import search_series
 from bot.formatter import escape, format_comparison, split_message
 import app.scrapers.factory  # регистрирует скрейперы в ScraperFactory
 
@@ -33,10 +35,16 @@ logger = logging.getLogger(__name__)
 WAIT_BASELINE_URL = 1
 WAIT_COMPARED_URL = 2
 WAIT_SEASON = 3
+WAIT_BASELINE_PICK = 4
+WAIT_COMPARED_PICK = 5
+
+# Префиксы для callback_data
+CB_BASELINE = "bl:"
+CB_COMPARED = "cp:"
 
 
 def _get_scraper(service_key: str):
-    scraper = _get_scraper(service_key)
+    scraper = ScraperFactory.get_scraper(service_key)
     if scraper:
         return CachedScraper(scraper, _cache, service_key)
     return scraper
@@ -54,13 +62,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало диалога — запрашиваем IMDb URL."""
+    """Начало диалога — запрашиваем IMDb URL или название."""
     context.user_data.clear()
 
     await update.message.reply_text(
-        "🔗 *Шаг 1 из 3* — Отправь URL сериала на первом ресурсе \\(например IMDB\\)\\.\n\n"
-        "Подойдёт любая страница сериала или сезона, например:\n"
-        "`https://www\\.imdb\\.com/title/tt0248654/`\n\n"
+        "🔍 *Шаг 1 из 3* — Введи название сериала для поиска или отправь URL напрямую\\.\n\n"
+        "Примеры:\n"
+        "`Breaking Bad` — поиск по названию\n"
+        "`https://www\\.imdb\\.com/title/tt0903747/` — прямой URL\n\n"
         "/cancel — отменить",
         parse_mode="MarkdownV2",
         reply_markup=ReplyKeyboardRemove(),
@@ -82,17 +91,76 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Шаги диалога ───────────────────────────────────────────────────────────
 
 async def received_baseline_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Шаг 1 — получили IMDb URL."""
-    url = update.message.text.strip()
+    """Шаг 1 — получили URL или название сериала для baseline."""
+    text = update.message.text.strip()
 
-    service, name = detect_service(url)
-    if not service:
+    # Если это URL — обрабатываем напрямую
+    if re.match(r"https?://", text, re.IGNORECASE):
+        return await _handle_baseline_url(update, context, text)
+
+    # Иначе — ищем по названию
+    await update.message.reply_text("🔍 Ищу сериалы по названию...", parse_mode=None)
+
+    results = await search_series(text)
+    if not results:
         await update.message.reply_text(
-            "❌ Не удалось определить сервис по этому URL\\.\n"
-            "Поддерживаются: *IMDb*, *Amediateka*\\.\n\n"
-            "Попробуй ещё раз или /cancel\\.",
+            "❌ Ничего не найдено по запросу\\. Попробуй другое название или вставь URL\\.",
             parse_mode="MarkdownV2",
         )
+        return WAIT_BASELINE_URL
+
+    # Сохраняем результаты поиска для выбора
+    context.user_data["search_results"] = {r.series_id: r for r in results}
+
+    keyboard = [
+        [InlineKeyboardButton(
+            text=f"{r.title}{' (' + r.year + ')' if r.year else ''}",
+            callback_data=f"{CB_BASELINE}{r.series_id}",
+        )]
+        for r in results[:8]
+    ]
+    await update.message.reply_text(
+        "📋 Выбери сериал из списка:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+    return WAIT_BASELINE_PICK
+
+
+async def callback_baseline_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пользователь выбрал сериал из инлайн-клавиатуры (baseline)."""
+    query = update.callback_query
+    await query.answer()
+
+    series_id = query.data[len(CB_BASELINE):]
+    results = context.user_data.get("search_results", {})
+    result = results.get(series_id)
+
+    if not result:
+        await query.edit_message_text("❌ Ошибка выбора. Попробуй /compare заново.")
+        return ConversationHandler.END
+
+    await query.edit_message_text(f"✅ Выбрано: {result.title}{' (' + result.year + ')' if result.year else ''}")
+    return await _handle_baseline_url(update, context, result.url, use_message=False)
+
+
+async def _handle_baseline_url(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    url: str,
+    use_message: bool = True,
+) -> int:
+    """Общая логика после получения URL для baseline."""
+    service, name = detect_service(url)
+    if not service:
+        msg = (
+            "❌ Не удалось определить сервис по этому URL\\.\n"
+            "Поддерживаются: *IMDb*, *Amediateka*\\.\n\n"
+            "Попробуй ещё раз или /cancel\\."
+        )
+        if use_message:
+            await update.message.reply_text(msg, parse_mode="MarkdownV2")
+        else:
+            await update.callback_query.message.reply_text(msg, parse_mode="MarkdownV2")
         return WAIT_BASELINE_URL
 
     context.user_data["baseline_url"] = url
@@ -105,14 +173,15 @@ async def received_baseline_url(update: Update, context: ContextTypes.DEFAULT_TY
     seasons = await scraper.get_seasons(url)
     seasons_str = f"{len(seasons)}" if seasons else "сезоны не найдены"
     if isinstance(title, str):
-        preview = f"✅ Для сравнения: Сериал *{escape(title)}*, найдено сезонов: {seasons_str}"
+        preview = f"✅ Сериал *{escape(title)}*, найдено сезонов: {seasons_str}"
     else:
-        preview = f"✅ Для сравнения: Сериал *{escape(name)}*, найдено сезонов: {seasons_str}"
+        preview = f"✅ Сериал *{escape(name)}*, найдено сезонов: {seasons_str}"
 
-    await update.message.reply_text(
+    reply_target = update.message if use_message else update.callback_query.message
+    await reply_target.reply_text(
         f"{preview}\n\n"
-        f"🔗 *Шаг 2 из 3* — Отправь URL того же сериала на другом сервисе\\.\n\n"
-        f"Подойдёт ссылка на сериал или на любой его сезон, например:\n"
+        f"🔍 *Шаг 2 из 3* — Введи название или URL того же сериала на другом сервисе\\.\n\n"
+        f"Например:\n"
         f"`https://www\\.amediateka\\.ru/watch/series\\_11353\\_klient\\-vsegda\\-mertv/`\n\n"
         f"/cancel — отменить",
         parse_mode="MarkdownV2",
@@ -121,23 +190,82 @@ async def received_baseline_url(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def received_compared_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Шаг 2 — получили Amediateka URL, ищем общие сезоны."""
-    url = update.message.text.strip()
+    """Шаг 2 — получили URL или название для compared."""
+    text = update.message.text.strip()
 
-    service, name = detect_service(url)
-    if not service:
+    # Если это URL — обрабатываем напрямую
+    if re.match(r"https?://", text, re.IGNORECASE):
+        return await _handle_compared_url(update, context, text)
+
+    # Поиск по названию (только IMDb — Amediateka без публичного API)
+    await update.message.reply_text("🔍 Ищу сериалы по названию...", parse_mode=None)
+
+    results = await search_series(text)
+    if not results:
         await update.message.reply_text(
-            "❌ Не удалось определить сервис по этому URL\\.\n"
-            "Попробуй ещё раз или /cancel\\.",
+            "❌ Ничего не найдено\\. Попробуй другое название или вставь URL напрямую\\.",
             parse_mode="MarkdownV2",
         )
+        return WAIT_COMPARED_URL
+
+    context.user_data["search_results"] = {r.series_id: r for r in results}
+
+    keyboard = [
+        [InlineKeyboardButton(
+            text=f"{r.title}{' (' + r.year + ')' if r.year else ''}",
+            callback_data=f"{CB_COMPARED}{r.series_id}",
+        )]
+        for r in results[:8]
+    ]
+    await update.message.reply_text(
+        "📋 Выбери сериал из списка:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+    return WAIT_COMPARED_PICK
+
+
+async def callback_compared_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пользователь выбрал сериал из инлайн-клавиатуры (compared)."""
+    query = update.callback_query
+    await query.answer()
+
+    series_id = query.data[len(CB_COMPARED):]
+    results = context.user_data.get("search_results", {})
+    result = results.get(series_id)
+
+    if not result:
+        await query.edit_message_text("❌ Ошибка выбора. Попробуй /compare заново.")
+        return ConversationHandler.END
+
+    await query.edit_message_text(f"✅ Выбрано: {result.title}{' (' + result.year + ')' if result.year else ''}")
+    return await _handle_compared_url(update, context, result.url, use_message=False)
+
+
+async def _handle_compared_url(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    url: str,
+    use_message: bool = True,
+) -> int:
+    """Общая логика после получения URL для compared."""
+    service, name = detect_service(url)
+    if not service:
+        msg = (
+            "❌ Не удалось определить сервис по этому URL\\.\n"
+            "Попробуй ещё раз или /cancel\\."
+        )
+        if use_message:
+            await update.message.reply_text(msg, parse_mode="MarkdownV2")
+        else:
+            await update.callback_query.message.reply_text(msg, parse_mode="MarkdownV2")
         return WAIT_COMPARED_URL
 
     context.user_data["compared_url"] = url
     context.user_data["compared_service"] = service
     context.user_data["compared_name"] = name
 
-    await update.message.reply_text(
+    reply_target = update.message if use_message else update.callback_query.message
+    await reply_target.reply_text(
         "⏳ Ищу доступные сезоны\\.\\.\\.",
         parse_mode="MarkdownV2",
     )
@@ -161,7 +289,7 @@ async def received_compared_url(update: Update, context: ContextTypes.DEFAULT_TY
     common_seasons = sorted(set(baseline_seasons) & set(compared_seasons))
 
     if not common_seasons:
-        await update.message.reply_text(
+        await reply_target.reply_text(
             "❌ Не удалось найти общие сезоны на обоих сервисах\\.\n"
             "Проверь URL и попробуй /compare заново\\.",
             parse_mode="MarkdownV2",
@@ -214,7 +342,7 @@ async def received_compared_url(update: Update, context: ContextTypes.DEFAULT_TY
     keyboard = [[f"Сезон {s}" for s in common_seasons]]
     markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
-    await update.message.reply_text(
+    await reply_target.reply_text(
         f"✅ Найдено общих сезонов: *{len(common_seasons)}*{extra}\n\n"
         f"🎬 *Шаг 3 из 3* — Выбери сезон для сравнения:",
         parse_mode="MarkdownV2",
@@ -230,9 +358,9 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text == "Новое сравнение":
         await update.message.reply_text(
             "🔄 Выбери базовый сериал для нового сравнения:",
-            reply_markup=ReplyKeyboardRemove(), 
+            reply_markup=ReplyKeyboardRemove(),
         )
-        return WAIT_BASELINE_URL  
+        return WAIT_BASELINE_URL
 
     match = re.search(r"\d+", text)
     if not match:
@@ -267,7 +395,10 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     baseline_result = await baseline_scraper.scrape_episodes(urls["baseline"])
 
-    await update.message.reply_text(f"✅ Baseline готов ({len(baseline_result.episodes) if baseline_result.episodes else 0} эп.). Загружаем compared...", parse_mode=None)
+    await update.message.reply_text(
+        f"✅ Baseline готов ({len(baseline_result.episodes) if baseline_result.episodes else 0} эп.). Загружаем compared...",
+        parse_mode=None,
+    )
 
     compared_result = await compared_scraper.scrape_episodes(urls["compared"])
 
@@ -300,8 +431,10 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
     other_seasons = [s for s in common_seasons if s != season]
 
     if other_seasons:
-        keyboard = [[f"Сезон {s}" for s in other_seasons],
-            ["Новое сравнение"]]
+        keyboard = [
+            [f"Сезон {s}" for s in other_seasons],
+            ["Новое сравнение"],
+        ]
         markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text(
             "🔄 Сравнить другой сезон этого же сериала?",
@@ -333,13 +466,19 @@ def build_conversation_handler() -> ConversationHandler:
         entry_points=[CommandHandler("compare", cmd_compare)],
         states={
             WAIT_BASELINE_URL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_baseline_url)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_baseline_url),
+            ],
+            WAIT_BASELINE_PICK: [
+                CallbackQueryHandler(callback_baseline_pick, pattern=f"^{CB_BASELINE}"),
             ],
             WAIT_COMPARED_URL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_compared_url)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_compared_url),
+            ],
+            WAIT_COMPARED_PICK: [
+                CallbackQueryHandler(callback_compared_pick, pattern=f"^{CB_COMPARED}"),
             ],
             WAIT_SEASON: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_season)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_season),
             ],
         },
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
