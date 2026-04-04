@@ -53,31 +53,21 @@ def format_comparison(
         if color in ("large-red", "large-green"):
             emoji = "🟢" if diff > 0 else "🔴"
             line = f" {emoji} {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м, {sign}{pct}%)"
-            # significant.append(
             significant_counter += 1
-            lines.append(
-                escape(line)
-            )
+            lines.append(escape(line))
         elif color == "medium-diff":
             line = f" 🟡 {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м)"
-            # medium.append(
             medium_counter += 1
-            lines.append(
-                escape(line)
-            )
+            lines.append(escape(line))
         else:
             line = f" ⚪ {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м)"
-            # medium.append(
             medium_counter += 1
-            lines.append(
-                escape(line)
-            )
+            lines.append(escape(line))
 
     lines.append("")
 
     total = len(rows)
 
-    # if not significant and not medium and not missing:
     if significant_counter + medium_counter + missing_counter == 0:
         lines.append(
             "✅ Значимых различий не найдено\\. "
