@@ -59,8 +59,16 @@ class EpisodeCache:
             logger.info("Cache expired: %s/%s/s%d", service, series_id, season)
             return None
 
+        result = _deserialize(data_json)
+
+        # Защита от кешированных данных с потерянными длительностями
+        # (например, из-за бага парсинга Amediateka, когда duration был строкой)
+        if result.episodes and all(ep.duration_min is None for ep in result.episodes):
+            logger.warning("Cache hit but all durations are None — treating as miss: %s/%s/s%d", service, series_id, season)
+            return None
+
         logger.info("Cache hit: %s/%s/s%d", service, series_id, season)
-        return _deserialize(data_json)
+        return result
 
     async def put(self, service: str, series_id: str, season: int, result: ScrapeResult) -> None:
         """Сохраняет результат в кеш. Перезаписывает если запись уже есть."""

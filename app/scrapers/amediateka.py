@@ -73,8 +73,15 @@ class AmediatekaScraper(BaseScraper):
                     continue
 
                 title = ep.get("title", "Без названия").strip()
-                duration_seconds = ep.get("duration")  # Amediateka хранит в секундах
-                duration_min = (duration_seconds // 60) if isinstance(duration_seconds, int) and duration_seconds > 0 else None
+
+                # Amediateka хранит длительность в секундах.
+                # Поле может быть int (1270) или str ("1270") — обрабатываем оба варианта.
+                duration_raw = ep.get("duration")
+                try:
+                    duration_seconds = int(duration_raw) if duration_raw else 0
+                except (ValueError, TypeError):
+                    duration_seconds = 0
+                duration_min = (duration_seconds // 60) if duration_seconds > 0 else None
 
                 episodes.append(Episode(
                     season=content.get("seasonNumber", 0),  # или брать из url, если нужно

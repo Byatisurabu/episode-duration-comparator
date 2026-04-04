@@ -82,6 +82,26 @@ class TestParseNextData:
         html = _make_next_data_html(data)
         assert scraper._parse_next_data(html) == []
 
+    def test_string_duration(self, scraper):
+        """duration как строка (напр. '1270') — должна корректно парситься."""
+        data = {
+            "props": {
+                "pageProps": {
+                    "content": {
+                        "type": "season",
+                        "seasonNumber": 1,
+                        "episodes": [
+                            {"number": 1, "title": "Эпизод", "duration": "1270", "id": 201},
+                        ],
+                    }
+                }
+            }
+        }
+        html = _make_next_data_html(data)
+        episodes = scraper._parse_next_data(html)
+        assert len(episodes) == 1
+        assert episodes[0].duration_min == 21  # 1270 // 60 = 21
+
 
 class TestExtractSeriesTitle:
     @pytest.mark.asyncio
