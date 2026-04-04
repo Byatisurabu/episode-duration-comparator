@@ -4,7 +4,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.search import search_series
+from app.services.search import search_amediateka, search_series
 
 # ── Фикстуры ─────────────────────────────────────────────────────────────────
 
@@ -238,3 +238,161 @@ class TestSearchSeries:
 
         assert len(captured_urls) == 1
         assert "/b/" in captured_urls[0]
+
+
+# ── Тесты search_amediateka ───────────────────────────────────────────────────
+
+AMEDIATEKA_RESPONSE_OK = [
+    {
+        "type": "contents",
+        "content": {
+            "count": 3,
+            "next": None,
+            "previous": None,
+            "results": [
+                {
+                    "id": 28661,
+                    "title": "Призраки",
+                    "webUrl": "/watch/series_28661_prizraki",
+                    "type": "series",
+                    "premiereYear": 2021,
+                    "assets": {
+                        "productPoster": "https://i.amediateka.tech/resize/{SIZE}/_stor_/poster.jpg",
+                    },
+                },
+                {
+                    "id": 9446,
+                    "title": "Призраки Абу-Грэйб",
+                    "webUrl": "/watch/movies_9446_prizraki-abu-greyb",
+                    "type": "movie",   # ← должен быть отфильтрован
+                    "premiereYear": 2007,
+                    "assets": {},
+                },
+                {
+                    "id": 11223,
+                    "title": "Игра престолов",
+                    "webUrl": "/watch/series_11223_igra-prestolov",
+                    "type": "series",
+                    "premiereYear": 2011,
+                    "assets": {},      # нет постера
+                },
+            ],
+        },
+    }
+]
+
+
+class TestSearchAmediateka:
+
+    async def test_returns_series_only(self):
+        """Фильтрует movie, оставляет только series."""
+        mock_resp = _make_mock_response(AMEDIATEKA_RESPONSE_OK)
+
+        with patch("app.services.search.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await search_amediateka("ghosts")
+
+        titles = [r.title for r in results]
+        assert "Призраки" in titles
+        assert "Игра престолов" in titles
+        assert "Призраки Абу-Грэйб" not in titles
+
+    async def test_result_fields(self):
+        """Проверяет поля SearchResult для Amediateka."""
+        mock_resp = _make_mock_response(AMEDIATEKA_RESPONSE_OK)
+
+        with patch("app.services.search.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await search_amediateka("ghosts")
+
+        ghosts = next(r for r in results if r.series_id == "28661")
+        assert ghosts.title == "Призраки"
+        assert ghosts.year == "2021"
+        assert ghosts.url == "https://www.amediateka.ru/watch/series_28661_prizraki"
+        assert "80x118" in ghosts.poster_url
+        assert "{SIZE}" not in ghosts.poster_url
+
+    async def test_no_poster_when_assets_empty(self):
+        """poster_url равен None если assets пустой."""
+        mock_resp = _make_mock_response(AMEDIATEKA_RESPONSE_OK)
+
+        with patch("app.services.search.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await search_amediateka("ghosts")
+
+        got = next(r for r in results if r.series_id == "11223")
+        assert got.poster_url is None
+
+    async def test_empty_query_returns_empty(self):
+        """Запрос < 2 символов возвращает пустой список без HTTP запроса."""
+        with patch("app.services.search.httpx.AsyncClient") as mock_client_cls:
+            results = await search_amediateka("a")
+
+        mock_client_cls.assert_not_called()
+        assert results == []
+
+    async def test_http_error_returns_empty(self):
+        """При не-200 статусе возвращает пустой список."""
+        mock_resp = _make_mock_response({}, status=503)
+
+        with patch("app.services.search.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await search_amediateka("ghosts")
+
+        assert results == []
+
+    async def test_network_exception_returns_empty(self):
+        """При сетевой ошибке возвращает пустой список."""
+        with patch("app.services.search.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(side_effect=Exception("timeout"))
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await search_amediateka("ghosts")
+
+        assert results == []
+
+    async def test_ignores_non_contents_blocks(self):
+        """Блоки с type != 'contents' игнорируются."""
+        data = [
+            {"type": "banner", "content": {}},
+            {"type": "contents", "content": {"results": [
+                {"id": 1, "title": "Сериал", "webUrl": "/watch/series_1_serial",
+                 "type": "series", "premiereYear": 2020, "assets": {}},
+            ]}},
+        ]
+        mock_resp = _make_mock_response(data)
+
+        with patch("app.services.search.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            results = await search_amediateka("сериал")
+
+        assert len(results) == 1
+        assert results[0].title == "Сериал"

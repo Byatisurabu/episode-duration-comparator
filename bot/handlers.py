@@ -22,7 +22,7 @@ from app.scrapers.base import ScraperFactory
 from app.scrapers.cached import CachedScraper
 from app.services.comparison import create_comparison_rows
 from app.services.detector import detect_service
-from app.services.search import search_series
+from app.services.search import search_amediateka, search_series
 from bot.formatter import escape, format_comparison, split_message
 
 # Общий кеш для бота (тот же data/cache.db что и у веб-приложения)
@@ -196,10 +196,10 @@ async def received_compared_url(update: Update, context: ContextTypes.DEFAULT_TY
     if re.match(r"https?://", text, re.IGNORECASE):
         return await _handle_compared_url(update, context, text)
 
-    # Поиск по названию (только IMDb — Amediateka без публичного API)
+    # Поиск по названию через Amediateka API
     await update.message.reply_text("🔍 Ищу сериалы по названию...", parse_mode=None)
 
-    results = await search_series(text)
+    results = await search_amediateka(text)
     if not results:
         await update.message.reply_text(
             "❌ Ничего не найдено\\. Попробуй другое название или вставь URL напрямую\\.",
