@@ -40,3 +40,21 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t episode-duration-comparator:ci .
+
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/episode-duration-comparator
+            git pull
+            docker compose up -d --build
