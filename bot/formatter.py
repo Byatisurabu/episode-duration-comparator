@@ -7,7 +7,7 @@ from app.config import DiffThresholds
 
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 def format_comparison(
     baseline_name: str,
