@@ -51,11 +51,25 @@
                    value="{{ prev_baseline or '' }}">
         </div>
 
-        <!-- Compared: Amediateka, только URL -->
+        <!-- Compared: Amediateka с поиском по названию -->
         <div class="url-field">
-            <label for="compared_url">Compared (Amediateka)</label>
+            <label for="compared_search">Compared (Amediateka)</label>
+
+            <!-- Поиск по названию -->
+            <div class="search-wrapper" id="compared-search-wrapper">
+                <input type="text" id="compared_search"
+                       class="search-input"
+                       placeholder="Введите название сериала..."
+                       autocomplete="off"
+                       oninput="onSearchInput(this, 'compared')"
+                       onfocus="onSearchFocus('compared')"
+                       onblur="onSearchBlur('compared')">
+                <div class="search-dropdown" id="compared-dropdown"></div>
+            </div>
+
+            <!-- URL (заполняется автоматически или вручную) -->
             <input type="url" id="compared_url"
-                   placeholder="https://www.amediateka.ru/watch/series_.../season_1_..."
+                   placeholder="или вставьте URL: https://www.amediateka.ru/watch/series_..."
                    value="{{ prev_compared or '' }}">
         </div>
 
@@ -130,8 +144,9 @@
     }
 
     async function fetchSearch(q, field) {
+        const service = field === 'compared' ? 'amediateka' : 'imdb';
         try {
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&service=${service}`);
             const data = await resp.json();
             if (!data.ok) return;
             renderDropdown(data.results, field);

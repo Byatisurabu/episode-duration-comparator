@@ -16,7 +16,7 @@ from app.scrapers.base import ScraperFactory
 from app.scrapers.cached import CachedScraper
 from app.services.comparison import create_comparison_rows
 from app.services.detector import detect_service
-from app.services.search import search_series
+from app.services.search import search_amediateka, search_series
 
 logger = logging.getLogger(__name__)
 
@@ -221,11 +221,14 @@ async def get_seasons(
 
 
 @app.get("/api/search")
-async def api_search(q: str = ""):
-    """Поиск сериалов по названию через IMDb Suggestion API."""
+async def api_search(q: str = "", service: str = "imdb"):
+    """Поиск сериалов по названию. service=imdb|amediateka."""
     if len(q.strip()) < 2:
         return JSONResponse({"ok": True, "results": []})
-    results = await search_series(q)
+    if service == "amediateka":
+        results = await search_amediateka(q)
+    else:
+        results = await search_series(q)
     return JSONResponse({
         "ok": True,
         "results": [
