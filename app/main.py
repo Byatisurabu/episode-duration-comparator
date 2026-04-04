@@ -34,8 +34,9 @@ def is_valid_url(url_str: str) -> bool:
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse(
+        request,
         "index.html",
-        {"request": request, "title": "Сравнитель длительности серий — MVP"}
+        {"title": "Сравнитель длительности серий — MVP"}
     )
 
 
@@ -60,9 +61,9 @@ async def compare(
 
     if errors:
         return templates.TemplateResponse(
+            request,
             "index.html",
             {
-                "request": request,
                 "title": "Ошибка ввода",
                 "error_messages": errors,
                 "prev_baseline": baseline_url,
@@ -81,9 +82,9 @@ async def compare(
 
     if errors:
         return templates.TemplateResponse(
+            request,
             "index.html",
             {
-                "request": request,
                 "title": "Неподдерживаемый сервис",
                 "error_messages": errors,
                 "prev_baseline": baseline_url,
@@ -120,7 +121,6 @@ async def compare(
         season_urls = {}
 
     context = {
-        "request": request,
         "title": "Сравнение длительности серий",
 
         # Baseline блок
@@ -145,7 +145,7 @@ async def compare(
         "season_urls": season_urls,
     }
 
-    return templates.TemplateResponse("result.html", context)
+    return templates.TemplateResponse(request, "result.html", context)
 
 @app.post("/get-seasons")
 async def get_seasons(

@@ -8,7 +8,6 @@ import httpx
 
 from app.scrapers.base import BaseScraper
 from app.models import Episode, ScrapeResult
-from app.services.normalizer import normalize_duration
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +73,8 @@ class AmediatekaScraper(BaseScraper):
                     continue
 
                 title = ep.get("title", "Без названия").strip()
-                duration_raw = ep.get("duration")
-                duration_min = normalize_duration(duration_raw)
+                duration_seconds = ep.get("duration")  # Amediateka хранит в секундах
+                duration_min = (duration_seconds // 60) if isinstance(duration_seconds, int) and duration_seconds > 0 else None
 
                 episodes.append(Episode(
                     season=content.get("seasonNumber", 0),  # или брать из url, если нужно
