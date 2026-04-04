@@ -6,7 +6,6 @@
 # Текущий режим: Polling — работает локально без публичного URL.
 # При переносе на VPS: заменить run_polling на run_webhook (см. комментарий ниже).
 
-import asyncio
 import logging
 import os
 
@@ -28,6 +27,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def _post_init(application) -> None:
+    """Инициализируем кеш внутри event loop PTB, а не до его запуска."""
+    await EpisodeCache().init_db()
+
+
 def main():
     token = os.environ.get("BOT_TOKEN")
     if not token:
@@ -35,10 +39,7 @@ def main():
             "BOT_TOKEN не задан. Добавь его в .env или в переменные окружения."
         )
 
-    # Инициализируем кеш (создаём таблицу если не существует)
-    asyncio.run(EpisodeCache().init_db())
-
-    app = ApplicationBuilder().token(token).build()
+    app = ApplicationBuilder().token(token).post_init(_post_init).build()
 
     # Глобальные команды — доступны в любой момент, включая середину диалога
     app.add_handler(CommandHandler("start", cmd_start))
