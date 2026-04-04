@@ -17,6 +17,7 @@ from telegram.ext import (
     filters,
 )
 
+import app.scrapers.factory  # noqa: F401 — side-effect: регистрирует скрейперы в ScraperFactory
 from app.cache.sqlite_cache import EpisodeCache
 from app.scrapers.base import ScraperFactory
 from app.scrapers.cached import CachedScraper
