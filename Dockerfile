@@ -21,7 +21,7 @@ COPY app/ ./app/
 COPY bot/ ./bot/
 
 # Не запускаем от root
-RUN useradd -m appuser
+RUN useradd -m appuser && mkdir -p /app/data && chown appuser /app/data
 USER appuser
 
 # Порт, который слушает uvicorn
