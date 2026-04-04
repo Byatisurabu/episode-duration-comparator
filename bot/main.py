@@ -14,10 +14,10 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 
 from app.cache.sqlite_cache import EpisodeCache
 from bot.handlers import (
-    cmd_start,
-    cmd_cancel,
-    fallback_unknown,
     build_conversation_handler,
+    cmd_cancel,
+    cmd_start,
+    fallback_unknown,
 )
 
 logging.basicConfig(

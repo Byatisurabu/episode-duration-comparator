@@ -1,4 +1,3 @@
-import pytest
 from app.services.normalizer import normalize_duration
 
 

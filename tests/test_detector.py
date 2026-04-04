@@ -1,4 +1,3 @@
-import pytest
 from app.services.detector import detect_service, get_supported_services_list
 
 

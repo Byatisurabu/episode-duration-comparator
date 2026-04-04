@@ -3,9 +3,9 @@
 # Форматирует результат сравнения в текст для Telegram (MarkdownV2).
 # Использует те же пороги из config.py что и веб-интерфейс.
 
-from app.config import DiffThresholds
-
 import logging
+
+from app.config import DiffThresholds
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def format_comparison(
     rows: list[dict],
     season: int,
 ) -> str:
-    
+
     lines = []
 
     lines.append(f"📊 *Сравнение сезона {season}*")
@@ -26,9 +26,6 @@ def format_comparison(
     lines.append(f"▪️ Compared: *{escape(compared_name)}* — {escape(compared_title)}")
     lines.append("")
 
-    significant = []
-    medium = []
-    missing = []
     significant_counter = 0
     medium_counter = 0
     missing_counter = 0

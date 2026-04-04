@@ -1,15 +1,14 @@
 # app/scrapers/imdb.py
 
-import re
-import json
 import logging
-from typing import List, Optional
+import re
 from math import ceil
+from typing import List, Optional
 
 import httpx
 
-from app.scrapers.base import BaseScraper
 from app.models import Episode, ScrapeResult
+from app.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 

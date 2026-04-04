@@ -1,6 +1,6 @@
 # app/services/detector.py
-from urllib.parse import urlparse
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 # Список поддерживаемых сервисов (расширяется в будущем)
 SUPPORTED_SERVICES = {
