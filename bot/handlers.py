@@ -603,5 +603,8 @@ def build_conversation_handler() -> ConversationHandler:
                 CallbackQueryHandler(callback_new_compare, pattern=r"^action:new_compare$"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cmd_cancel)],
+        fallbacks=[
+            CommandHandler("compare", cmd_compare),  # перезапуск диалога из любого состояния
+            CommandHandler("cancel", cmd_cancel),
+        ],
     )
