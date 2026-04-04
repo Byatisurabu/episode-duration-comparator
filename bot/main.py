@@ -16,6 +16,7 @@ from app.cache.sqlite_cache import EpisodeCache
 from bot.handlers import (
     build_conversation_handler,
     cmd_cancel,
+    cmd_help,
     cmd_start,
     fallback_unknown,
 )
@@ -42,6 +43,7 @@ def main():
     # Глобальные команды — доступны в любой момент, включая середину диалога
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("help", cmd_help))
 
     # Диалог сравнения
     app.add_handler(build_conversation_handler())
@@ -52,7 +54,7 @@ def main():
     logger.info("Бот запущен в режиме polling")
 
     app.run_polling(
-        allowed_updates=["message"],
+        allowed_updates=["message", "callback_query"],
         drop_pending_updates=True,  # игнорировать сообщения пока бот был выключен
     )
 
