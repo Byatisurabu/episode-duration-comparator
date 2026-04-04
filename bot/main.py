@@ -6,11 +6,13 @@
 # Текущий режим: Polling — работает локально без публичного URL.
 # При переносе на VPS: заменить run_polling на run_webhook (см. комментарий ниже).
 
+import asyncio
 import logging
 import os
 
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
+from app.cache.sqlite_cache import EpisodeCache
 from bot.handlers import (
     cmd_start,
     cmd_cancel,
@@ -31,6 +33,9 @@ def main():
         raise RuntimeError(
             "BOT_TOKEN не задан. Добавь его в .env или в переменные окружения."
         )
+
+    # Инициализируем кеш (создаём таблицу если не существует)
+    asyncio.run(EpisodeCache().init_db())
 
     app = ApplicationBuilder().token(token).build()
 

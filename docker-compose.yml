@@ -5,6 +5,8 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    volumes:
+      - cache-data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -14,9 +16,14 @@ services:
     container_name: episode-comparator-bot
     command: ["python", "-m", "bot.main"]
     restart: unless-stopped
+    volumes:
+      - cache-data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - BOT_TOKEN=${BOT_TOKEN}
     depends_on:
       - app
+
+volumes:
+  cache-data:

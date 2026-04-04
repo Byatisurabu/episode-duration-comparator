@@ -18,9 +18,14 @@ from telegram.ext import (
 
 from app.services.detector import detect_service
 from app.scrapers.base import ScraperFactory
+from app.scrapers.cached import CachedScraper
+from app.cache.sqlite_cache import EpisodeCache
 from app.services.comparison import create_comparison_rows
 from bot.formatter import escape, format_comparison, split_message
 import app.scrapers.factory  # регистрирует скрейперы в ScraperFactory
+
+# Общий кеш для бота (тот же data/cache.db что и у веб-приложения)
+_cache = EpisodeCache()
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,13 @@ logger = logging.getLogger(__name__)
 WAIT_BASELINE_URL = 1
 WAIT_COMPARED_URL = 2
 WAIT_SEASON = 3
+
+
+def _get_scraper(service_key: str):
+    scraper = _get_scraper(service_key)
+    if scraper:
+        return CachedScraper(scraper, _cache, service_key)
+    return scraper
 
 
 # ─── Команды ────────────────────────────────────────────────────────────────
@@ -88,7 +100,7 @@ async def received_baseline_url(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data["baseline_name"] = name
 
     # Preview: название + сезоны
-    scraper = ScraperFactory.get_scraper(service)
+    scraper = _get_scraper(service)
     title = await scraper.get_series_title(url)
     seasons = await scraper.get_seasons(url)
     seasons_str = f"{len(seasons)}" if seasons else "сезоны не найдены"
@@ -130,8 +142,8 @@ async def received_compared_url(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="MarkdownV2",
     )
 
-    baseline_scraper = ScraperFactory.get_scraper(context.user_data["baseline_service"])
-    compared_scraper = ScraperFactory.get_scraper(service)
+    baseline_scraper = _get_scraper(context.user_data["baseline_service"])
+    compared_scraper = _get_scraper(service)
 
     baseline_seasons, compared_seasons = await asyncio.gather(
         baseline_scraper.get_seasons(context.user_data["baseline_url"]),
@@ -248,8 +260,8 @@ async def received_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     urls = season_urls[season]
-    baseline_scraper = ScraperFactory.get_scraper(context.user_data["baseline_service"])
-    compared_scraper = ScraperFactory.get_scraper(context.user_data["compared_service"])
+    baseline_scraper = _get_scraper(context.user_data["baseline_service"])
+    compared_scraper = _get_scraper(context.user_data["compared_service"])
 
     await update.message.reply_text("📥 Загружаем baseline...", parse_mode=None)
 
