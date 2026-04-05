@@ -24,56 +24,61 @@
 </div>
 {% endif %}
 
-<!-- Шаг 1: ввод URL -->
+<!-- Шаг 1: единый поиск -->
 <div class="step">
-    <div class="step-label">Шаг 1 — Введите URL или название сериала</div>
-    <div class="url-row">
+    <div class="step-label">Шаг 1 — Найдите сериал</div>
 
-        <!-- Baseline: IMDb с поиском по названию -->
-        <div class="url-field">
-            <label for="baseline_search">Baseline (IMDb)</label>
-
-            <!-- Поиск по названию -->
-            <div class="search-wrapper" id="baseline-search-wrapper">
-                <input type="text" id="baseline_search"
-                       class="search-input"
-                       placeholder="Введите название сериала..."
-                       autocomplete="off"
-                       oninput="onSearchInput(this, 'baseline')"
-                       onfocus="onSearchFocus('baseline')"
-                       onblur="onSearchBlur('baseline')">
-                <div class="search-dropdown" id="baseline-dropdown"></div>
-            </div>
-
-            <!-- URL (заполняется автоматически или вручную) -->
-            <input type="url" id="baseline_url"
-                   placeholder="или вставьте URL: https://www.imdb.com/title/tt..."
-                   value="{{ prev_baseline or '' }}">
-        </div>
-
-        <!-- Compared: Amediateka с поиском по названию -->
-        <div class="url-field">
-            <label for="compared_search">Compared (Amediateka)</label>
-
-            <!-- Поиск по названию -->
-            <div class="search-wrapper" id="compared-search-wrapper">
-                <input type="text" id="compared_search"
-                       class="search-input"
-                       placeholder="Введите название сериала..."
-                       autocomplete="off"
-                       oninput="onSearchInput(this, 'compared')"
-                       onfocus="onSearchFocus('compared')"
-                       onblur="onSearchBlur('compared')">
-                <div class="search-dropdown" id="compared-dropdown"></div>
-            </div>
-
-            <!-- URL (заполняется автоматически или вручную) -->
-            <input type="url" id="compared_url"
-                   placeholder="или вставьте URL: https://www.amediateka.ru/watch/series_..."
-                   value="{{ prev_compared or '' }}">
-        </div>
-
+    <!-- Единое поле поиска -->
+    <div class="unified-search-wrapper">
+        <input type="text" id="unified_search"
+               class="search-input search-input--unified"
+               placeholder="Введите название сериала (поиск по IMDb и Amediateka)..."
+               autocomplete="off"
+               oninput="onUnifiedSearchInput(this)">
+        <div class="unified-search-status" id="unified-search-status"></div>
     </div>
+
+    <!-- Результаты: две колонки -->
+    <div class="unified-results" id="unified-results">
+        <div class="unified-results-panel" id="panel-imdb">
+            <div class="panel-header">🎬 IMDb</div>
+            <div class="panel-items" id="items-imdb">
+                <div class="panel-placeholder">Введите название для поиска</div>
+            </div>
+        </div>
+        <div class="unified-results-panel" id="panel-amediateka">
+            <div class="panel-header">📺 Amediateka</div>
+            <div class="panel-items" id="items-amediateka">
+                <div class="panel-placeholder">Введите название для поиска</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Сводка выбора -->
+    <div class="unified-selection" id="unified-selection" style="display:none">
+        <div class="selection-item" id="sel-imdb">IMDb: <span>—</span></div>
+        <div class="selection-item" id="sel-amediateka">Amediateka: <span>—</span></div>
+    </div>
+
+    <!-- Ручной ввод URL (свёрнут) -->
+    <details class="manual-url-toggle">
+        <summary>или ввести URL вручную</summary>
+        <div class="url-row">
+            <div class="url-field">
+                <label for="baseline_url">Baseline (IMDb) URL</label>
+                <input type="url" id="baseline_url"
+                       placeholder="https://www.imdb.com/title/tt..."
+                       value="{{ prev_baseline or '' }}">
+            </div>
+            <div class="url-field">
+                <label for="compared_url">Compared (Amediateka) URL</label>
+                <input type="url" id="compared_url"
+                       placeholder="https://www.amediateka.ru/watch/series_..."
+                       value="{{ prev_compared or '' }}">
+            </div>
+        </div>
+    </details>
+
     <button class="btn btn-primary" id="find-seasons-btn" onclick="findSeasons()">
         🔍 Найти сезоны
     </button>
@@ -117,57 +122,58 @@
 
 <script>
     let seasonData = null;
-    let searchTimers = {};
+    let searchTimer = null;
+    let selectedImdb = null;
+    let selectedAmediateka = null;
 
-    // ── Поиск по названию ────────────────────────────────────────────────────
+    // ── Единый поиск ─────────────────────────────────────────────────────
 
-    function onSearchInput(input, field) {
+    function onUnifiedSearchInput(input) {
         const q = input.value.trim();
-        clearTimeout(searchTimers[field]);
+        clearTimeout(searchTimer);
         if (q.length < 2) {
-            hideDropdown(field);
+            resetPanels();
             return;
         }
-        searchTimers[field] = setTimeout(() => fetchSearch(q, field), 300);
+        searchTimer = setTimeout(() => fetchUnifiedSearch(q), 300);
     }
 
-    function onSearchFocus(field) {
-        const q = document.getElementById(`${field}_search`).value.trim();
-        if (q.length >= 2) {
-            document.getElementById(`${field}-dropdown`).style.display = 'block';
-        }
-    }
+    async function fetchUnifiedSearch(q) {
+        const statusEl = document.getElementById('unified-search-status');
+        statusEl.textContent = '🔍 Ищу...';
 
-    function onSearchBlur(field) {
-        // Задержка — чтобы клик по dropdown успел сработать
-        setTimeout(() => hideDropdown(field), 200);
-    }
-
-    async function fetchSearch(q, field) {
-        const service = field === 'compared' ? 'amediateka' : 'imdb';
         try {
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&service=${service}`);
+            const resp = await fetch(`/api/search/unified?q=${encodeURIComponent(q)}`);
             const data = await resp.json();
-            if (!data.ok) return;
-            renderDropdown(data.results, field);
+            if (!data.ok) { statusEl.textContent = ''; return; }
+
+            renderPanel('imdb', data.imdb);
+            renderPanel('amediateka', data.amediateka);
+            document.getElementById('unified-results').classList.add('visible');
+
+            const total = data.imdb.length + data.amediateka.length;
+            statusEl.textContent = total ? '' : 'Ничего не найдено';
         } catch (e) {
-            hideDropdown(field);
+            statusEl.textContent = 'Ошибка поиска';
         }
     }
 
-    function renderDropdown(results, field) {
-        const dropdown = document.getElementById(`${field}-dropdown`);
-        dropdown.innerHTML = '';
+    function renderPanel(service, results) {
+        const container = document.getElementById(`items-${service}`);
+        container.innerHTML = '';
 
         if (!results.length) {
-            dropdown.innerHTML = '<div class="search-no-results">Ничего не найдено</div>';
-            dropdown.style.display = 'block';
+            container.innerHTML = '<div class="panel-placeholder">Не найдено</div>';
             return;
         }
 
         for (const r of results) {
             const item = document.createElement('div');
             item.className = 'search-item';
+            if ((service === 'imdb' && selectedImdb && selectedImdb.url === r.url) ||
+                (service === 'amediateka' && selectedAmediateka && selectedAmediateka.url === r.url)) {
+                item.classList.add('selected');
+            }
             item.innerHTML = `
                 ${r.poster_url
                     ? `<img class="search-poster" src="${r.poster_url}" alt="" loading="lazy">`
@@ -177,29 +183,68 @@
                     <div class="search-title">${escapeHtml(r.title)}</div>
                     <div class="search-year">${r.year || ''}</div>
                 </div>
+                <div class="search-check"></div>
             `;
-            item.addEventListener('mousedown', () => selectSearchResult(r, field));
-            dropdown.appendChild(item);
+            item.addEventListener('click', () => selectResult(r, service));
+            container.appendChild(item);
         }
-        dropdown.style.display = 'block';
     }
 
-    function selectSearchResult(result, field) {
-        document.getElementById(`${field}_search`).value = result.title;
-        document.getElementById(`${field}_url`).value = result.url;
-        hideDropdown(field);
+    function selectResult(result, service) {
+        if (service === 'imdb') {
+            selectedImdb = result;
+            document.getElementById('baseline_url').value = result.url;
+        } else {
+            selectedAmediateka = result;
+            document.getElementById('compared_url').value = result.url;
+        }
+
+        // Обновляем визуальное выделение
+        const container = document.getElementById(`items-${service}`);
+        container.querySelectorAll('.search-item').forEach(el => el.classList.remove('selected'));
+        // Находим нужный элемент по заголовку
+        container.querySelectorAll('.search-item').forEach(el => {
+            const title = el.querySelector('.search-title')?.textContent;
+            if (title === result.title) el.classList.add('selected');
+        });
+
+        updateSelection();
     }
 
-    function hideDropdown(field) {
-        const d = document.getElementById(`${field}-dropdown`);
-        if (d) d.style.display = 'none';
+    function updateSelection() {
+        const el = document.getElementById('unified-selection');
+        const selImdb = document.getElementById('sel-imdb').querySelector('span');
+        const selAmd = document.getElementById('sel-amediateka').querySelector('span');
+
+        if (selectedImdb || selectedAmediateka) {
+            el.style.display = 'flex';
+        }
+
+        selImdb.textContent = selectedImdb
+            ? `${selectedImdb.title}${selectedImdb.year ? ' (' + selectedImdb.year + ')' : ''}`
+            : '—';
+        selImdb.parentElement.classList.toggle('done', !!selectedImdb);
+
+        selAmd.textContent = selectedAmediateka
+            ? `${selectedAmediateka.title}${selectedAmediateka.year ? ' (' + selectedAmediateka.year + ')' : ''}`
+            : '—';
+        selAmd.parentElement.classList.toggle('done', !!selectedAmediateka);
+    }
+
+    function resetPanels() {
+        document.getElementById('items-imdb').innerHTML =
+            '<div class="panel-placeholder">Введите название для поиска</div>';
+        document.getElementById('items-amediateka').innerHTML =
+            '<div class="panel-placeholder">Введите название для поиска</div>';
+        document.getElementById('unified-results').classList.remove('visible');
+        document.getElementById('unified-search-status').textContent = '';
     }
 
     function escapeHtml(s) {
         return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    // ── Поиск сезонов ─────────────────────────────────────────────────────────
+    // ── Поиск сезонов ─────────────────────────────────────────────────────
 
     async function findSeasons() {
         const baselineUrl = document.getElementById('baseline_url').value.trim();
@@ -210,7 +255,7 @@
         document.getElementById('season-picker').classList.remove('visible');
 
         if (!baselineUrl || !comparedUrl) {
-            showError('Введите оба URL.');
+            showError('Выберите сериал из обоих сервисов или введите URL вручную.');
             return;
         }
 

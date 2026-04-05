@@ -60,3 +60,24 @@ class TestGetSeasonsEndpoint:
             },
         )
         assert resp.status_code == 400
+
+
+class TestUnifiedSearchEndpoint:
+    def test_short_query(self, client):
+        resp = client.get("/api/search/unified?q=a")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["imdb"] == []
+        assert data["amediateka"] == []
+
+    def test_response_shape(self, client):
+        """Проверяем структуру ответа (без реальных HTTP-запросов результаты пустые)."""
+        resp = client.get("/api/search/unified?q=nonexistent_show_xyz")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "ok" in data
+        assert "imdb" in data
+        assert "amediateka" in data
+        assert isinstance(data["imdb"], list)
+        assert isinstance(data["amediateka"], list)

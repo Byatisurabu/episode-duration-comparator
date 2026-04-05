@@ -4,6 +4,7 @@
 # IMDb: публичный Suggestion API.
 # Amediateka: публичный API api.amediateka.tech.
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
@@ -165,3 +166,24 @@ async def search_amediateka(query: str) -> list[SearchResult]:
             ))
 
     return results
+
+
+# ── Единый поиск ─────────────────────────────────────────────────────────────
+
+@dataclass
+class UnifiedSearchResults:
+    imdb: list[SearchResult]
+    amediateka: list[SearchResult]
+
+
+async def search_both(query: str) -> UnifiedSearchResults:
+    """Параллельный поиск по IMDb и Amediateka одним запросом."""
+    imdb, amediateka = await asyncio.gather(
+        search_series(query),
+        search_amediateka(query),
+        return_exceptions=True,
+    )
+    return UnifiedSearchResults(
+        imdb=imdb if isinstance(imdb, list) else [],
+        amediateka=amediateka if isinstance(amediateka, list) else [],
+    )

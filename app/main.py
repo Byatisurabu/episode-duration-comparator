@@ -16,7 +16,7 @@ from app.scrapers.base import ScraperFactory
 from app.scrapers.cached import CachedScraper
 from app.services.comparison import create_comparison_rows
 from app.services.detector import detect_service
-from app.services.search import search_amediateka, search_series
+from app.services.search import search_amediateka, search_both, search_series
 
 logger = logging.getLogger(__name__)
 
@@ -231,16 +231,33 @@ async def api_search(q: str = "", service: str = "imdb"):
         results = await search_series(q)
     return JSONResponse({
         "ok": True,
-        "results": [
-            {
-                "series_id": r.series_id,
-                "title": r.title,
-                "year": r.year,
-                "poster_url": r.poster_url,
-                "url": r.url,
-            }
-            for r in results
-        ],
+        "results": _serialize_results(results),
+    })
+
+
+def _serialize_results(results):
+    return [
+        {
+            "series_id": r.series_id,
+            "title": r.title,
+            "year": r.year,
+            "poster_url": r.poster_url,
+            "url": r.url,
+        }
+        for r in results
+    ]
+
+
+@app.get("/api/search/unified")
+async def api_search_unified(q: str = ""):
+    """Единый поиск по IMDb и Amediateka одновременно."""
+    if len(q.strip()) < 2:
+        return JSONResponse({"ok": True, "imdb": [], "amediateka": []})
+    result = await search_both(q)
+    return JSONResponse({
+        "ok": True,
+        "imdb": _serialize_results(result.imdb),
+        "amediateka": _serialize_results(result.amediateka),
     })
 
 

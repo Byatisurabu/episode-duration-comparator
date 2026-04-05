@@ -4,7 +4,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.search import search_amediateka, search_series
+from app.services.search import search_amediateka, search_both, search_series
 
 # ── Фикстуры ─────────────────────────────────────────────────────────────────
 
@@ -396,3 +396,76 @@ class TestSearchAmediateka:
 
         assert len(results) == 1
         assert results[0].title == "Сериал"
+
+
+# ── Тесты search_both ───────────────────────────────────────────────────────
+
+class TestSearchBoth:
+
+    async def test_both_services_succeed(self):
+        """Оба сервиса возвращают результаты."""
+        with (
+            patch("app.services.search.search_series", new_callable=AsyncMock) as mock_imdb,
+            patch("app.services.search.search_amediateka", new_callable=AsyncMock) as mock_amd,
+        ):
+            mock_imdb.return_value = [
+                MagicMock(series_id="tt123", title="Test Show"),
+            ]
+            mock_amd.return_value = [
+                MagicMock(series_id="456", title="Тест Шоу"),
+            ]
+
+            result = await search_both("test")
+
+        assert len(result.imdb) == 1
+        assert len(result.amediateka) == 1
+        assert result.imdb[0].title == "Test Show"
+        assert result.amediateka[0].title == "Тест Шоу"
+
+    async def test_imdb_fails_amediateka_ok(self):
+        """IMDb падает — amediateka всё равно возвращается."""
+        with (
+            patch("app.services.search.search_series", new_callable=AsyncMock) as mock_imdb,
+            patch("app.services.search.search_amediateka", new_callable=AsyncMock) as mock_amd,
+        ):
+            mock_imdb.side_effect = Exception("IMDb down")
+            mock_amd.return_value = [MagicMock(title="Сериал")]
+
+            result = await search_both("test")
+
+        assert result.imdb == []
+        assert len(result.amediateka) == 1
+
+    async def test_amediateka_fails_imdb_ok(self):
+        """Amediateka падает — IMDb всё равно возвращается."""
+        with (
+            patch("app.services.search.search_series", new_callable=AsyncMock) as mock_imdb,
+            patch("app.services.search.search_amediateka", new_callable=AsyncMock) as mock_amd,
+        ):
+            mock_imdb.return_value = [MagicMock(title="Show")]
+            mock_amd.side_effect = Exception("Amediateka down")
+
+            result = await search_both("test")
+
+        assert len(result.imdb) == 1
+        assert result.amediateka == []
+
+    async def test_both_fail(self):
+        """Оба сервиса падают — пустые списки."""
+        with (
+            patch("app.services.search.search_series", new_callable=AsyncMock) as mock_imdb,
+            patch("app.services.search.search_amediateka", new_callable=AsyncMock) as mock_amd,
+        ):
+            mock_imdb.side_effect = Exception("fail")
+            mock_amd.side_effect = Exception("fail")
+
+            result = await search_both("test")
+
+        assert result.imdb == []
+        assert result.amediateka == []
+
+    async def test_short_query(self):
+        """Короткий запрос — оба сервиса вернут пустые списки (внутренняя проверка)."""
+        result = await search_both("a")
+        assert result.imdb == []
+        assert result.amediateka == []
