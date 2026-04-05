@@ -54,7 +54,9 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          command_timeout: 20m
           script: |
             cd ~/episode-duration-comparator
             git pull
-            docker compose up -d --build
+            docker compose build
+            docker compose up -d
