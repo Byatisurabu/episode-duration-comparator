@@ -126,11 +126,38 @@ async def compare(
     compared_scraper = _get_scraper(compared_service)
     if not baseline_scraper or not compared_scraper:
         errors.append("Один из сервисов пока не реализован")
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "title": "Сервис не реализован",
+                "error_messages": errors,
+                "prev_baseline": baseline_url,
+                "prev_compared": compared_url,
+            },
+        )
 
     baseline_result, compared_result = await asyncio.gather(
         baseline_scraper.scrape_episodes(baseline_url, force_refresh=refresh),
         compared_scraper.scrape_episodes(compared_url, force_refresh=refresh),
+        return_exceptions=True,
     )
+
+    if isinstance(baseline_result, Exception) or isinstance(compared_result, Exception):
+        if isinstance(baseline_result, Exception):
+            logger.error("Ошибка скрейпинга baseline: %s", baseline_result)
+        if isinstance(compared_result, Exception):
+            logger.error("Ошибка скрейпинга compared: %s", compared_result)
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "title": "Ошибка скрейпинга",
+                "error_messages": ["Не удалось получить данные с одного из сервисов. Попробуйте позже."],
+                "prev_baseline": baseline_url,
+                "prev_compared": compared_url,
+            },
+        )
 
     comparison_rows = create_comparison_rows(
         baseline_result.episodes,
