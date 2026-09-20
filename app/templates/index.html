@@ -176,12 +176,12 @@
             }
             item.innerHTML = `
                 ${r.poster_url
-                    ? `<img class="search-poster" src="${r.poster_url}" alt="" loading="lazy">`
+                    ? `<img class="search-poster" src="${escapeHtml(r.poster_url)}" alt="" loading="lazy">`
                     : `<div class="search-poster-placeholder"></div>`
                 }
                 <div class="search-meta">
                     <div class="search-title">${escapeHtml(r.title)}</div>
-                    <div class="search-year">${r.year || ''}</div>
+                    <div class="search-year">${escapeHtml(r.year || '')}</div>
                 </div>
                 <div class="search-check"></div>
             `;
@@ -241,7 +241,8 @@
     }
 
     function escapeHtml(s) {
-        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
     // ── Поиск сезонов ─────────────────────────────────────────────────────
