@@ -244,4 +244,4 @@ class AmediatekaScraper(BaseScraper):
         html = await self._fetch_page(url)
         if not html:
             return None
-        return self._extract_series_title(html)
+        return await self._extract_series_title(html)
