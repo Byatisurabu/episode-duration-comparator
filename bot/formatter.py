@@ -59,10 +59,7 @@ def format_comparison(
             line = f" 🟡 {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м)"
             medium_counter += 1
             lines.append(escape(line))
-        else:
-            line = f" ⚪ {ep_label}: {dur_b}м → {dur_c}м ({sign}{diff}м)"
-            medium_counter += 1
-            lines.append(escape(line))
+        # color == "small-diff" — различие в пределах нормы, в отчёт не попадает
 
     lines.append("")
 

@@ -48,7 +48,8 @@ class TestSplitMessage:
 
 
 class TestFormatComparison:
-    def test_basic_output(self):
+    def test_basic_output_no_significant_diff(self):
+        """small-diff эпизоды не в пределах значимости — не должны попадать в отчёт."""
         rows = [
             {
                 "season": 1, "episode": 1,
@@ -63,7 +64,24 @@ class TestFormatComparison:
         result = format_comparison("IMDb", "Breaking Bad", "Amediateka", "Breaking Bad", rows, 1)
         assert "Сравнение сезона 1" in result
         assert "IMDb" in result
+        assert "S01E01" not in result
+        assert "Значимых различий не найдено" in result
+
+    def test_medium_diff_shown(self):
+        rows = [
+            {
+                "season": 1, "episode": 1,
+                "title_baseline": "Pilot", "title_compared": "Pilot",
+                "duration_baseline": 60, "duration_compared": 56,
+                "diff_min": -4, "diff_percent": -6.7,
+                "color_class": "medium-diff",
+                "row_class": "",
+                "missing_in_baseline": False, "missing_in_compared": False,
+            }
+        ]
+        result = format_comparison("IMDb", "Breaking Bad", "Amediateka", "Breaking Bad", rows, 1)
         assert "S01E01" in result
+        assert "🟡" in result
 
     def test_missing_episode(self):
         rows = [
