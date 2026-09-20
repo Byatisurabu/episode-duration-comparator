@@ -66,6 +66,11 @@ class AmediatekaScraper(BaseScraper):
                 logger.warning("episodes пустой массив")
                 return []
 
+            season_number = content.get("seasonNumber")
+            if not isinstance(season_number, int):
+                logger.warning("seasonNumber отсутствует или некорректен")
+                return []
+
             episodes = []
             for ep in episodes_raw:
                 num = ep.get("number")
@@ -84,7 +89,7 @@ class AmediatekaScraper(BaseScraper):
                 duration_min = (duration_seconds // 60) if duration_seconds > 0 else None
 
                 episodes.append(Episode(
-                    season=content.get("seasonNumber", 0),  # или брать из url, если нужно
+                    season=season_number,
                     episode=num,
                     title=title,
                     duration_min=duration_min,
