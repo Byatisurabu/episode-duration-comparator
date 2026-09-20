@@ -4,19 +4,22 @@
 стриминговых платформах — помогает находить купюры, цензуру и разные монтажные
 версии. Есть веб-интерфейс (FastAPI) и Telegram-бот.
 
-**Статус:** MVP, core-функционал завершён. Подробный план и история этапов — в
-[`HLE_v0.2.1.md`](HLE_v0.2.1.md) (актуальная версия) и [`HLE_v0.1.md`](HLE_v0.1.md).
+**Статус:** далеко за пределами исходного MVP — есть поиск по названию, кэш
+результатов, CI/CD с автодеплоем и тесты. `HLE_v0.1.md`/`HLE_v0.2.1.md` и
+`step-*.md` описывают только раннюю стадию проекта и не отражают текущее
+состояние — актуальную картину лучше смотреть в коде и `git log`.
 
 ## Возможности
 
-- Сравнение длительности эпизодов по двум URL (baseline vs compared)
-- Автоопределение сервиса по домену ссылки
-- Подбор сезона: можно указать ссылку на сериал целиком — сезоны найдутся
-  автоматически, покажутся общие для обеих платформ
+- Поиск сериала по названию сразу на IMDb и Amediateka (единый поиск), либо
+  ручной ввод URL
+- Подбор сезона: сезоны находятся автоматически, показываются общие для
+  обеих платформ
 - Таблица сравнения с цветовой индикацией отличий (проценты + абсолютная
   разница в минутах)
-- Тот же функционал в Telegram-боте (диалог: ссылка 1 → ссылка 2 → выбор
-  сезона → результат)
+- Кэширование результатов скрейпинга (SQLite, TTL 7 дней) — повторное
+  сравнение того же сезона не бьёт по источникам заново
+- Тот же функционал в Telegram-боте, с той же логикой поиска и кэша
 
 ### Поддерживаемые сервисы
 
@@ -31,28 +34,35 @@
 
 ```
 app/
-  main.py              # FastAPI-приложение: /, /compare, /get-seasons
+  main.py              # FastAPI: /, /compare, /get-seasons, /api/search, /api/search/unified
   config.py             # Пороги и цвета для индикации различий (DiffThresholds, DiffColors)
   models.py              # Episode, ScrapeResult (dataclasses)
+  cache/
+    sqlite_cache.py        # SQLite-кэш результатов скрейпинга (TTL 7 дней)
   scrapers/
     base.py               # BaseScraper (abstract), ScraperFactory
+    cached.py              # Декоратор с кэшированием поверх любого скрейпера
     factory.py             # Регистрация скрейперов в ScraperFactory
-    imdb.py                 # Скрейпер IMDb
-    amediateka.py           # Скрейпер Amediateka
+    imdb.py                 # Скрейпер IMDb (GraphQL API)
+    amediateka.py           # Скрейпер Amediateka (HTML + __NEXT_DATA__)
   services/
     detector.py            # Определение сервиса по домену URL
     normalizer.py           # Приведение длительности к минутам (PT1H23M, "1h 23m", секунды и т.д.)
     comparison.py           # Сборка строк таблицы сравнения + классификация отличий
+    search.py               # Поиск сериалов по названию (IMDb + Amediateka)
   templates/, static/     # Jinja2-шаблоны и CSS веб-интерфейса
 
 bot/
   main.py               # Точка входа Telegram-бота (polling)
-  handlers.py            # ConversationHandler: диалог сравнения
+  handlers.py            # ConversationHandler: поиск по названию → выбор сезона
   formatter.py            # Форматирование результата в MarkdownV2 для Telegram
+
+tests/                  # pytest, 127+ тестов
+.github/workflows/ci.yml  # линт (ruff) + тесты + docker build + автодеплой по SSH на push в main
 ```
 
 Оба интерфейса (веб и бот) используют один и тот же слой `app/` — скрейперы,
-нормализацию и сравнение.
+кэш, нормализацию и сравнение.
 
 ## Установка и запуск
 
@@ -98,6 +108,14 @@ docker compose up
 Поднимет два контейнера: `app` (веб, порт 8000) и `bot` (polling, читает
 `BOT_TOKEN` из переменной окружения хоста).
 
+### Тесты и линт
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -q
+ruff check .
+```
+
 ## Конфигурация
 
 Пороги и цвета классификации различий — в одном месте, `app/config.py`:
@@ -117,3 +135,6 @@ docker compose up
    (`scrape_episodes`, `get_seasons`, `build_season_url`, `get_series_title`)
 3. Зарегистрировать в `app/scrapers/factory.py`:
    `ScraperFactory.register("<service_key>", <ScraperClass>)`
+4. Добавить regex-извлечение id/сезона из URL нового сервиса в
+   `app/scrapers/cached.py` (`_extract_id`/`_extract_season`) — иначе кэш для
+   него просто не будет работать (без ошибки, молча)
