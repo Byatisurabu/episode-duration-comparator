@@ -126,6 +126,16 @@ async def compare(
     compared_scraper = _get_scraper(compared_service)
     if not baseline_scraper or not compared_scraper:
         errors.append("Один из сервисов пока не реализован")
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "title": "Сервис не реализован",
+                "error_messages": errors,
+                "prev_baseline": baseline_url,
+                "prev_compared": compared_url,
+            },
+        )
 
     baseline_result, compared_result = await asyncio.gather(
         baseline_scraper.scrape_episodes(baseline_url, force_refresh=refresh),
