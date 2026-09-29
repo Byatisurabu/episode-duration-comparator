@@ -66,6 +66,13 @@ def _get_scraper(service_key: str, force_refresh: bool = False):
     return scraper
 
 
+async def _scrape(scraper, url: str, force_refresh: bool):
+    """force_refresh понимает только CachedScraper — голому скрейперу (кеш не инициализирован) его не передаём."""
+    if isinstance(scraper, CachedScraper):
+        return await scraper.scrape_episodes(url, force_refresh=force_refresh)
+    return await scraper.scrape_episodes(url)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse(
@@ -144,8 +151,8 @@ async def compare(
         )
 
     baseline_result, compared_result = await asyncio.gather(
-        baseline_scraper.scrape_episodes(baseline_url, force_refresh=refresh),
-        compared_scraper.scrape_episodes(compared_url, force_refresh=refresh),
+        _scrape(baseline_scraper, baseline_url, refresh),
+        _scrape(compared_scraper, compared_url, refresh),
         return_exceptions=True,
     )
 
