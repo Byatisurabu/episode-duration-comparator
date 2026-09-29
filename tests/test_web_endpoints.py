@@ -102,16 +102,27 @@ class TestImdbDatasetNotReady:
         assert data["ok"] is False
         assert self.NOT_READY in data["errors"][0]
 
-    def test_compare(self, client, monkeypatch, tmp_path):
-        # /compare передаёт force_refresh — это умеет только CachedScraper, в проде кеш есть всегда
-        import asyncio
-
-        import app.main as main_module
-        from app.cache.sqlite_cache import EpisodeCache
-        cache = EpisodeCache(tmp_path / "cache.db")
-        asyncio.run(cache.init_db())
-        monkeypatch.setattr(main_module, "_cache", cache)
-
+    def test_compare(self, client):
         resp = client.post("/compare", data={"baseline_url": self.IMDB_URL, "compared_url": self.IMDB_URL})
         assert resp.status_code == 200
         assert self.NOT_READY in resp.text
+
+
+class TestCompareWithoutCache:
+    """Если кеш не инициализирован, _get_scraper отдаёт голый скрейпер — /compare не должен
+    передавать ему force_refresh (раньше: TypeError → 500)."""
+
+    def test_compare(self, client, monkeypatch):
+        import app.main as main_module
+        from app.models import Episode, ScrapeResult
+        from app.scrapers.imdb import ImdbScraper
+
+        async def fake_scrape(self, url):
+            return ScrapeResult(series_title="Breaking Bad", episodes=[Episode(season=1, episode=1, title="Pilot", duration_min=58)])
+
+        monkeypatch.setattr(main_module, "_cache", None)
+        monkeypatch.setattr(ImdbScraper, "scrape_episodes", fake_scrape)
+        url = "https://www.imdb.com/title/tt0903747/episodes?season=1"
+        resp = client.post("/compare", data={"baseline_url": url, "compared_url": url, "force_refresh": "1"})
+        assert resp.status_code == 200
+        assert "Pilot" in resp.text
