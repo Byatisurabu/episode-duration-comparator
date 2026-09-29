@@ -1,9 +1,12 @@
+import asyncio
 import gzip
+import sys
 
 import pytest
 
 from app.scrapers.base import ServiceUnavailableError
 from app.scrapers.imdb import ImdbScraper
+from app.services import imdb_dataset
 from app.services.imdb_dataset import ImdbDataset, build_from_files, is_fresh
 
 EPISODE_TSV = """tconst\tparentTconst\tseasonNumber\tepisodeNumber
@@ -73,11 +76,40 @@ class TestExtractSeason:
 class TestBuildDatabase:
     def test_tmp_file_removed(self, db_path):
         assert db_path.exists()
-        assert not db_path.with_suffix(".db.tmp").exists()
+        assert list(db_path.parent.glob("*.tmp")) == []
+
+    def test_failed_build_removes_tmp(self, tmp_path):
+        broken = tmp_path / "broken.tsv.gz"
+        broken.write_bytes(b"not a gzip")
+        with pytest.raises(Exception):
+            build_from_files(broken, broken, tmp_path / "imdb.db")
+        assert list(tmp_path.glob("*.tmp")) == []
+        assert not (tmp_path / "imdb.db").exists()
 
     def test_is_fresh(self, db_path, tmp_path):
         assert is_fresh(db_path)
         assert not is_fresh(tmp_path / "missing.db")
+
+
+class TestRunBuild:
+    async def test_cancel_terminates_subprocess(self, monkeypatch):
+        """При остановке приложения процесс сборки не должен оставаться сиротой."""
+        started = []
+        real_exec = asyncio.create_subprocess_exec
+
+        async def fake_exec(*args, **kwargs):
+            proc = await real_exec(sys.executable, "-c", "import time; time.sleep(60)")
+            started.append(proc)
+            return proc
+
+        monkeypatch.setattr(imdb_dataset.asyncio, "create_subprocess_exec", fake_exec)
+        task = asyncio.create_task(imdb_dataset._run_build())
+        while not started:
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert started[0].returncode is not None
 
 
 class TestScrapeEpisodes:

@@ -1,7 +1,7 @@
 import asyncio
 import json as _json
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Form, Request
@@ -33,7 +33,10 @@ async def lifespan(app: FastAPI):
     # Локальная база IMDb: собирается при первом старте и обновляется раз в сутки
     imdb_refresh = asyncio.create_task(refresh_loop())
     yield
+    # Дожидаемся отмены — refresh_loop завершает запущенный процесс сборки
     imdb_refresh.cancel()
+    with suppress(asyncio.CancelledError):
+        await imdb_refresh
 
 
 app = FastAPI(

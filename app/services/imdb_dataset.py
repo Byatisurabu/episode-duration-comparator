@@ -14,6 +14,7 @@ import asyncio
 import gzip
 import logging
 import os
+import signal
 import sqlite3
 import sys
 import time
@@ -95,9 +96,19 @@ def _basics_rows(path: Path) -> Iterator[tuple[str, int, str, Optional[int]]]:
 
 def build_from_files(episode_path: Path, basics_path: Path, db_path: Path) -> None:
     """Собирает базу из скачанных файлов в tmp-файл и атомарно подменяет db_path."""
-    tmp_path = db_path.with_suffix(".db.tmp")
+    # PID в имени — параллельные сборки (например, после рестарта uvicorn --reload) не портят друг другу файлы
+    tmp_path = db_path.with_suffix(f".db.{os.getpid()}.tmp")
     tmp_path.unlink(missing_ok=True)
+    try:
+        _build_tmp(episode_path, basics_path, tmp_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
+    os.replace(tmp_path, db_path)
+
+
+def _build_tmp(episode_path: Path, basics_path: Path, tmp_path: Path) -> None:
     conn = sqlite3.connect(tmp_path)
     try:
         conn.execute("PRAGMA journal_mode=OFF")
@@ -146,8 +157,6 @@ def build_from_files(episode_path: Path, basics_path: Path, db_path: Path) -> No
     finally:
         conn.close()
 
-    os.replace(tmp_path, db_path)
-
 
 def _download(name: str, dest: Path) -> None:
     with httpx.stream("GET", DATASETS_URL + name, timeout=60.0, follow_redirects=True) as resp:
@@ -161,8 +170,8 @@ def download_and_build(db_path: Path = DB_PATH) -> None:
     """Скачивает датасеты и пересобирает базу. Синхронно, долго — запускать в отдельном процессе."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     work_dir = db_path.parent
-    episode_path = work_dir / EPISODE_FILE
-    basics_path = work_dir / BASICS_FILE
+    episode_path = work_dir / f"{EPISODE_FILE}.{os.getpid()}"
+    basics_path = work_dir / f"{BASICS_FILE}.{os.getpid()}"
     started = time.monotonic()
     try:
         logger.info("IMDb dataset: скачиваю %s, %s", EPISODE_FILE, BASICS_FILE)
@@ -188,11 +197,21 @@ async def refresh_loop(db_path: Path = DB_PATH) -> None:
     Сборка идёт в отдельном процессе, чтобы не блокировать event loop и не упираться в GIL."""
     while True:
         if not is_fresh(db_path):
-            proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "app.services.imdb_dataset")
-            code = await proc.wait()
+            code = await _run_build()
             if code != 0:
                 logger.error("IMDb dataset: сборка завершилась с кодом %d", code)
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+
+
+async def _run_build() -> int:
+    proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "app.services.imdb_dataset")
+    try:
+        return await proc.wait()
+    except asyncio.CancelledError:
+        # Приложение останавливается — не оставляем сборку работать сиротой
+        proc.terminate()
+        await proc.wait()
+        raise
 
 
 # ── Чтение ──────────────────────────────────────────────────────────────────
@@ -242,4 +261,6 @@ class ImdbDataset:
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", level=logging.INFO)
+    # terminate() от родителя — через SystemExit, чтобы finally удалил временные файлы
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
     download_and_build()
