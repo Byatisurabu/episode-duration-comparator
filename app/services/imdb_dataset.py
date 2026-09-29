@@ -8,7 +8,8 @@
 #   — скачивает title.episode.tsv.gz и title.basics.tsv.gz,
 #   — собирает data/imdb.db во временный файл и атомарно подменяет старый.
 # Веб-приложение запускает сборку в отдельном процессе раз в сутки (см. app/main.py),
-# бот только читает готовый файл через общий volume.
+# бот только читает готовый файл через общий volume. Бот без веба базу не соберёт —
+# тогда запускать сборку вручную (см. README).
 
 import asyncio
 import gzip
@@ -236,7 +237,9 @@ class ImdbDataset:
     async def _fetch(self, sql: str, params: tuple) -> list[tuple]:
         if not self.db_path.exists():
             raise ImdbDatasetNotReady()
-        # read-only: файл пересобирается подменой, открытые соединения дочитывают старую версию
+        # read-only: файл пересобирается подменой. На Linux (прод) открытые соединения дочитывают
+        # старую версию. На Windows os.replace падает с PermissionError, пока файл открыт на чтение, —
+        # сборка завершится ошибкой, следующая попытка будет через час (refresh_loop)
         async with aiosqlite.connect(f"file:{self.db_path.as_posix()}?mode=ro", uri=True) as db:
             async with db.execute(sql, params) as cursor:
                 return list(await cursor.fetchall())
