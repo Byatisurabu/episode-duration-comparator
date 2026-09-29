@@ -91,6 +91,24 @@ class TestBuildDatabase:
         assert not is_fresh(tmp_path / "missing.db")
 
 
+class TestRefreshLoop:
+    async def test_survives_exception(self, monkeypatch, tmp_path):
+        """Исключение в итерации не должно останавливать цикл обновления навсегда."""
+        calls = []
+
+        async def failing_build():
+            calls.append(1)
+            if len(calls) >= 2:
+                raise asyncio.CancelledError  # вторая итерация — цикл жив, выходим
+            raise OSError("No space left on device")
+
+        monkeypatch.setattr(imdb_dataset, "_run_build", failing_build)
+        monkeypatch.setattr(imdb_dataset, "CHECK_INTERVAL_SECONDS", 0)
+        with pytest.raises(asyncio.CancelledError):
+            await imdb_dataset.refresh_loop(tmp_path / "missing.db")
+        assert len(calls) == 2
+
+
 class TestRunBuild:
     async def test_cancel_terminates_subprocess(self, monkeypatch):
         """При остановке приложения процесс сборки не должен оставаться сиротой."""

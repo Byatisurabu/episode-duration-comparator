@@ -196,10 +196,14 @@ async def refresh_loop(db_path: Path = DB_PATH) -> None:
     """Фоновая задача веб-приложения: раз в час проверяет, не пора ли пересобрать базу.
     Сборка идёт в отдельном процессе, чтобы не блокировать event loop и не упираться в GIL."""
     while True:
-        if not is_fresh(db_path):
-            code = await _run_build()
-            if code != 0:
-                logger.error("IMDb dataset: сборка завершилась с кодом %d", code)
+        # Любая ошибка итерации (диск, права на volume) не должна навсегда останавливать обновления
+        try:
+            if not is_fresh(db_path):
+                code = await _run_build()
+                if code != 0:
+                    logger.error("IMDb dataset: сборка завершилась с кодом %d", code)
+        except Exception:
+            logger.exception("IMDb dataset: ошибка при обновлении базы, повтор через час")
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
 
