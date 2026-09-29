@@ -54,6 +54,15 @@ def _get_scraper(service_key: str):
     return scraper
 
 
+def _not_implemented_text(service_name: str) -> str:
+    """Сервис распознан (есть в SUPPORTED_SERVICES), но скрейпера для него нет — Кинопоиск, Okko."""
+    return (
+        f"❌ {escape(service_name)} пока не поддерживается\\.\n"
+        "Поддерживаются: *IMDb*, *Amediateka*\\.\n\n"
+        "Попробуй ещё раз или /cancel\\."
+    )
+
+
 # ─── Команды ────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,6 +187,10 @@ async def _handle_direct_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return WAIT_SEARCH
 
     scraper = _get_scraper(service)
+    if not scraper:
+        await update.message.reply_text(_not_implemented_text(name), parse_mode="MarkdownV2")
+        return WAIT_SEARCH
+
     try:
         title = await scraper.get_series_title(url)
         seasons = await scraper.get_seasons(url)
@@ -318,6 +331,10 @@ async def received_compared_url(update: Update, context: ContextTypes.DEFAULT_TY
                 "❌ Не удалось определить сервис\\. Попробуй ещё раз или /cancel\\.",
                 parse_mode="MarkdownV2",
             )
+            return WAIT_COMPARED_URL
+
+        if not _get_scraper(service):
+            await update.message.reply_text(_not_implemented_text(name), parse_mode="MarkdownV2")
             return WAIT_COMPARED_URL
 
         if need_baseline:
