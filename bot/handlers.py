@@ -5,9 +5,13 @@
 
 import asyncio
 import logging
+import os
 import re
+import time
+from datetime import timedelta
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.error import NetworkError
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -23,6 +27,8 @@ from app.scrapers.base import ScraperFactory, ServiceUnavailableError
 from app.scrapers.cached import CachedScraper
 from app.services.comparison import create_comparison_rows
 from app.services.detector import detect_service
+from app.services.imdb_dataset import DB_PATH as IMDB_DB_PATH
+from app.services.imdb_dataset import is_fresh
 from app.services.search import search_both
 from bot.formatter import escape, format_comparison, split_message
 
@@ -45,6 +51,8 @@ CB_COMPARED = "cp:"           # fallback: compared pick
 CB_SEASON = "sn:"
 CB_ALL_SEASONS = "sn:all"
 CB_NEW_COMPARE = "action:new_compare"
+CB_ACTION_COMPARE = "action:compare"
+CB_ACTION_HELP = "action:help"
 
 
 def _get_scraper(service_key: str):
@@ -63,28 +71,84 @@ def _not_implemented_text(service_name: str) -> str:
     )
 
 
+# ─── Меню ───────────────────────────────────────────────────────────────────
+
+# Команды для кнопки "Меню" слева от поля ввода (ставятся в bot/main.py при старте)
+MENU_COMMANDS = [
+    ("compare", "🔍 Сравнить сериал"),
+    ("menu", "📋 Главное меню"),
+    ("help", "ℹ️ Как пользоваться"),
+    ("cancel", "❌ Отменить текущее сравнение"),
+    ("start", "🔄 Начать заново"),
+]
+# Дополнительно видны только администраторам (ADMIN_IDS)
+ADMIN_COMMANDS = [
+    ("status", "🩺 Состояние бота"),
+    ("restart", "♻️ Перезапустить бота"),
+]
+
+
+def _main_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔍 Сравнить сериалы", callback_data=CB_ACTION_COMPARE)],
+        [InlineKeyboardButton("ℹ️ Помощь", callback_data=CB_ACTION_HELP)],
+    ])
+
+
+def admin_ids() -> set[int]:
+    """ADMIN_IDS — telegram user id через запятую. Читаем при каждом вызове, чтобы не зависеть от порядка импорта."""
+    ids = set()
+    for part in os.environ.get("ADMIN_IDS", "").split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.add(int(part))
+    return ids
+
+
+def _is_admin(update: Update) -> bool:
+    return update.effective_user is not None and update.effective_user.id in admin_ids()
+
+
 # ─── Команды ────────────────────────────────────────────────────────────────
+#
+# /start, /menu, /cancel, /compare сбрасывают диалог: они стоят и в fallbacks
+# ConversationHandler (там возврат END реально завершает диалог), и глобально —
+# для случая, когда диалога нет.
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("🔍 Сравнить сериалы", callback_data="action:compare")]]
-    await update.message.reply_text(
+    context.user_data.clear()
+    await update.effective_message.reply_text(
         "👋 Привет\\! Я сравниваю длительность серий на IMDb и Amediateka, "
         "чтобы находить купюры и цензуру\\.\n\n"
-        "Нажми кнопку ниже или отправь /compare чтобы начать\\.",
+        "Нажми кнопку ниже или отправь /compare чтобы начать\\.\n"
+        "Если бот перестал реагировать на кнопки — /start сбрасывает всё\\.",
         parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=_main_menu(),
     )
+    return ConversationHandler.END
+
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.effective_message.reply_text(
+        "📋 *Главное меню*",
+        parse_mode="MarkdownV2",
+        reply_markup=_main_menu(),
+    )
+    return ConversationHandler.END
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "ℹ️ *Как пользоваться ботом*\n\n"
         "Этот бот сравнивает длительность серий одного и того же сериала "
         "на двух сервисах \\(IMDb и Amediateka\\), "
         "чтобы находить купюры и цензуру\\.\n\n"
         "*Команды:*\n"
         "/compare — начать сравнение\n"
+        "/menu — главное меню\n"
         "/cancel — отменить текущее сравнение\n"
+        "/start — начать заново, если бот перестал реагировать\n"
         "/help — эта справка\n\n"
         "*Процесс:*\n"
         "1\\. Введи название сериала — бот найдёт его сразу на IMDb и Amediateka\n"
@@ -99,7 +163,7 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало диалога — запрашиваем название сериала."""
     context.user_data.clear()
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "🔍 *Шаг 1 из 2* — Введи название сериала\\.\n\n"
         "Я найду его сразу на IMDb и Amediateka\\.\n\n"
         "Пример: `Breaking Bad`\n\n"
@@ -114,18 +178,53 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Прерывает текущий диалог в любой момент."""
     context.user_data.clear()
-    await update.message.reply_text(
-        "❌ Сравнение отменено\\. Отправь /compare чтобы начать заново\\.",
+    await update.effective_message.reply_text(
+        "❌ Сравнение отменено\\.",
         parse_mode="MarkdownV2",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=_main_menu(),
     )
     return ConversationHandler.END
 
 
-# ─── Callback: запуск из /start ──────────────────────────────────────────────
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для администраторов: жив ли бот и в каком состоянии база IMDb."""
+    if not _is_admin(update):
+        return
+    started_at = context.application.bot_data.get("started_at")
+    uptime = str(timedelta(seconds=int(time.monotonic() - started_at))) if started_at else "—"
+    try:
+        age_h = (time.time() - IMDB_DB_PATH.stat().st_mtime) / 3600
+        imdb = f"собрана {age_h:.1f} ч назад" + ("" if is_fresh() else " (устарела)")
+    except FileNotFoundError:
+        imdb = "не собрана"
+    await update.effective_message.reply_text(
+        f"🩺 Бот работает\n"
+        f"Аптайм: {uptime}\n"
+        f"База IMDb: {imdb}"
+    )
+
+
+async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Только для администраторов: штатно останавливает polling, bot/main.py перезапускает процесс."""
+    if not _is_admin(update):
+        return
+    await update.effective_message.reply_text("♻️ Перезапускаюсь, вернусь через несколько секунд...")
+    context.application.bot_data["restart_requested"] = True
+    watchdog = context.application.bot_data.get("watchdog")
+    if watchdog:
+        watchdog.stop()
+    context.application.stop_running()
+
+
+# ─── Callback: кнопки главного меню ─────────────────────────────────────────
+
+async def callback_action_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await cmd_help(update, context)
+
 
 async def callback_action_compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Кнопка '🔍 Сравнить сериалы' из /start."""
+    """Кнопка '🔍 Сравнить сериалы' из главного меню."""
     query = update.callback_query
     await query.answer()
     context.user_data.clear()
@@ -660,13 +759,58 @@ async def callback_new_compare(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ─── Fallback ────────────────────────────────────────────────────────────────
 
+async def callback_noop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Кнопки-заголовки в unified picker ("── IMDb ──") — только снимаем "часики"."""
+    await update.callback_query.answer()
+
+
 async def fallback_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("🔍 Сравнить сериалы", callback_data="action:compare")]]
     await update.message.reply_text(
         "Отправь /compare чтобы начать сравнение\\.",
         parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=_main_menu(),
     )
+
+
+async def callback_stale(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Нажата кнопка, которую ни один обработчик не ждёт: сообщение из прошлого диалога
+    или отправленное до перезапуска бота (состояние диалогов живёт в памяти).
+    Без ответа на callback у пользователя бесконечно крутятся "часики" на кнопке."""
+    query = update.callback_query
+    await query.answer("Эта кнопка устарела — начни заново.")
+    context.user_data.clear()
+    await query.message.reply_text(
+        "⌛ Эта кнопка из прошлого сравнения\\. Начни новое:",
+        parse_mode="MarkdownV2",
+        reply_markup=_main_menu(),
+    )
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Глобальный обработчик: логирует исключение и сообщает пользователю,
+    вместо того чтобы молча оставить его без ответа."""
+    if isinstance(context.error, NetworkError) and not isinstance(update, Update):
+        # Сбои сети при polling — PTB сам повторяет запрос, это не ошибка обработки
+        logger.warning("Сетевая ошибка Telegram API: %s", context.error)
+        return
+
+    logger.error("Необработанное исключение при обработке апдейта", exc_info=context.error)
+
+    if not isinstance(update, Update) or update.effective_chat is None:
+        return
+    if context.user_data is not None:
+        context.user_data.clear()
+    try:
+        if update.callback_query:
+            await update.callback_query.answer()
+        await context.bot.send_message(
+            update.effective_chat.id,
+            "⚠️ Что-то пошло не так\\. Попробуй ещё раз — /compare или кнопка ниже\\.",
+            parse_mode="MarkdownV2",
+            reply_markup=_main_menu(),
+        )
+    except Exception:
+        logger.exception("Не удалось отправить пользователю сообщение об ошибке")
 
 
 # ─── Сборка ConversationHandler ──────────────────────────────────────────────
@@ -675,7 +819,7 @@ def build_conversation_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
             CommandHandler("compare", cmd_compare),
-            CallbackQueryHandler(callback_action_compare, pattern=r"^action:compare$"),
+            CallbackQueryHandler(callback_action_compare, pattern=rf"^{CB_ACTION_COMPARE}$"),
         ],
         states={
             WAIT_SEARCH: [
@@ -683,7 +827,7 @@ def build_conversation_handler() -> ConversationHandler:
             ],
             WAIT_UNIFIED_PICK: [
                 CallbackQueryHandler(callback_unified_pick, pattern=r"^u[bc]:"),
-                CallbackQueryHandler(lambda u, c: None, pattern=r"^noop$"),
+                CallbackQueryHandler(callback_noop, pattern=r"^noop$"),
             ],
             WAIT_COMPARED_URL: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, received_compared_url),
@@ -700,5 +844,32 @@ def build_conversation_handler() -> ConversationHandler:
         fallbacks=[
             CommandHandler("compare", cmd_compare),
             CommandHandler("cancel", cmd_cancel),
+            CommandHandler("start", cmd_start),
+            CommandHandler("menu", cmd_menu),
+            # Кнопка "Сравнить" из главного меню посреди диалога — начать заново
+            CallbackQueryHandler(callback_action_compare, pattern=rf"^{CB_ACTION_COMPARE}$"),
         ],
     )
+
+
+def register_handlers(app) -> None:
+    """Порядок важен: внутри одной группы срабатывает первый подходящий обработчик.
+    ConversationHandler стоит первым, иначе глобальные /cancel и /start перехватывают
+    команду раньше него и диалог остаётся в прежнем состоянии — следующее сообщение
+    пользователя уходит в старый шаг, и бот выглядит "зависшим"."""
+    app.add_handler(build_conversation_handler())
+
+    # Глобальные команды — для случая, когда диалога нет
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("menu", cmd_menu))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("restart", cmd_restart))
+    app.add_handler(CallbackQueryHandler(callback_action_help, pattern=rf"^{CB_ACTION_HELP}$"))
+
+    # Всё, что не подошло выше
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_unknown))
+    app.add_handler(CallbackQueryHandler(callback_stale))
+
+    app.add_error_handler(error_handler)
