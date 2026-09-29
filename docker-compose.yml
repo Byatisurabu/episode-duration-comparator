@@ -1,3 +1,10 @@
+# Ротация логов: без неё json-file растёт бесконечно и может забить диск VPS
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   app:
     build: .
@@ -10,11 +17,13 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+    logging: *default-logging
 
   bot:
     build: .
     container_name: episode-comparator-bot
     command: ["python", "-m", "bot.main"]
+    # Процесс бота сам завершается при зависании (bot/watchdog.py) — restart поднимает его заново
     restart: unless-stopped
     volumes:
       - cache-data:/app/data
@@ -22,6 +31,9 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - BOT_TOKEN=${BOT_TOKEN}
+      # telegram user id администраторов через запятую — им доступны /status и /restart
+      - ADMIN_IDS=${ADMIN_IDS:-}
+    logging: *default-logging
     depends_on:
       - app
 
