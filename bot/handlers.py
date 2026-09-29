@@ -19,7 +19,7 @@ from telegram.ext import (
 
 import app.scrapers.factory  # noqa: F401 — side-effect: регистрирует скрейперы в ScraperFactory
 from app.cache.sqlite_cache import EpisodeCache
-from app.scrapers.base import ScraperFactory
+from app.scrapers.base import ScraperFactory, ServiceUnavailableError
 from app.scrapers.cached import CachedScraper
 from app.services.comparison import create_comparison_rows
 from app.services.detector import detect_service
@@ -178,8 +178,12 @@ async def _handle_direct_url(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return WAIT_SEARCH
 
     scraper = _get_scraper(service)
-    title = await scraper.get_series_title(url)
-    seasons = await scraper.get_seasons(url)
+    try:
+        title = await scraper.get_series_title(url)
+        seasons = await scraper.get_seasons(url)
+    except ServiceUnavailableError as e:
+        await update.message.reply_text(f"❌ {escape(str(e))}", parse_mode="MarkdownV2")
+        return WAIT_SEARCH
     seasons_str = str(len(seasons)) if seasons else "сезоны не найдены"
     preview = f"✅ *{escape(title or name)}*, найдено сезонов: {seasons_str}"
 
@@ -402,6 +406,11 @@ async def _fetch_seasons_and_show(message, context) -> int:
         return_exceptions=True,
     )
 
+    unavailable = [str(r) for r in (baseline_seasons, compared_seasons) if isinstance(r, ServiceUnavailableError)]
+    if unavailable:
+        await message.reply_text("❌ " + escape(" ".join(unavailable)), parse_mode="MarkdownV2")
+        return ConversationHandler.END
+
     if isinstance(baseline_seasons, Exception):
         logger.error("get_seasons baseline: %s", baseline_seasons)
         baseline_seasons = []
@@ -534,6 +543,10 @@ async def _scrape_and_compare_season(message, context, season: int) -> bool:
             await message.reply_text(part, parse_mode="MarkdownV2")
 
         return True
+
+    except ServiceUnavailableError as e:
+        await status_msg.edit_text(f"❌ Сезон {season} — {escape(str(e))}", parse_mode="MarkdownV2")
+        return False
 
     except Exception as e:
         logger.error("_scrape_and_compare_season season=%d: %s", season, e)

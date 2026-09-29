@@ -81,3 +81,37 @@ class TestUnifiedSearchEndpoint:
         assert "amediateka" in data
         assert isinstance(data["imdb"], list)
         assert isinstance(data["amediateka"], list)
+
+
+class TestImdbDatasetNotReady:
+    """Пока локальная база IMDb не собрана — пользователь видит понятное сообщение, а не пустую таблицу."""
+
+    IMDB_URL = "https://www.imdb.com/title/tt0903747/episodes?season=1"
+    NOT_READY = "База IMDb ещё загружается"
+
+    @pytest.fixture(autouse=True)
+    def missing_dataset(self, monkeypatch, tmp_path):
+        import app.scrapers.imdb as imdb_module
+        from app.services.imdb_dataset import ImdbDataset
+        monkeypatch.setattr(imdb_module, "ImdbDataset", lambda: ImdbDataset(tmp_path / "missing.db"))
+
+    def test_get_seasons(self, client):
+        resp = client.post("/get-seasons", data={"baseline_url": self.IMDB_URL, "compared_url": self.IMDB_URL})
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["ok"] is False
+        assert self.NOT_READY in data["errors"][0]
+
+    def test_compare(self, client, monkeypatch, tmp_path):
+        # /compare передаёт force_refresh — это умеет только CachedScraper, в проде кеш есть всегда
+        import asyncio
+
+        import app.main as main_module
+        from app.cache.sqlite_cache import EpisodeCache
+        cache = EpisodeCache(tmp_path / "cache.db")
+        asyncio.run(cache.init_db())
+        monkeypatch.setattr(main_module, "_cache", cache)
+
+        resp = client.post("/compare", data={"baseline_url": self.IMDB_URL, "compared_url": self.IMDB_URL})
+        assert resp.status_code == 200
+        assert self.NOT_READY in resp.text

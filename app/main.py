@@ -12,10 +12,11 @@ from fastapi.templating import Jinja2Templates
 import app.scrapers.factory  # регистрирует скрейперы в ScraperFactory
 from app.cache.sqlite_cache import EpisodeCache
 from app.config import DiffColors, DiffThresholds
-from app.scrapers.base import ScraperFactory
+from app.scrapers.base import ScraperFactory, ServiceUnavailableError
 from app.scrapers.cached import CachedScraper
 from app.services.comparison import create_comparison_rows
 from app.services.detector import detect_service
+from app.services.imdb_dataset import refresh_loop
 from app.services.search import search_amediateka, search_both, search_series
 
 logger = logging.getLogger(__name__)
@@ -29,8 +30,10 @@ async def lifespan(app: FastAPI):
     global _cache
     _cache = EpisodeCache()
     await _cache.init_db()
+    # Локальная база IMDb: собирается при первом старте и обновляется раз в сутки
+    imdb_refresh = asyncio.create_task(refresh_loop())
     yield
-    # teardown при необходимости
+    imdb_refresh.cancel()
 
 
 app = FastAPI(
@@ -148,12 +151,13 @@ async def compare(
             logger.error("Ошибка скрейпинга baseline: %s", baseline_result)
         if isinstance(compared_result, Exception):
             logger.error("Ошибка скрейпинга compared: %s", compared_result)
+        unavailable = [str(r) for r in (baseline_result, compared_result) if isinstance(r, ServiceUnavailableError)]
         return templates.TemplateResponse(
             request,
             "index.html",
             {
                 "title": "Ошибка скрейпинга",
-                "error_messages": ["Не удалось получить данные с одного из сервисов. Попробуйте позже."],
+                "error_messages": unavailable or ["Не удалось получить данные с одного из сервисов. Попробуйте позже."],
                 "prev_baseline": baseline_url,
                 "prev_compared": compared_url,
             },
@@ -220,9 +224,15 @@ async def get_seasons(
         return_exceptions=True,
     )
 
+    unavailable = [str(r) for r in (baseline_seasons, compared_seasons) if isinstance(r, ServiceUnavailableError)]
+    if unavailable:
+        return JSONResponse({"ok": False, "errors": unavailable}, status_code=503)
+
     if isinstance(baseline_seasons, Exception):
+        logger.error("get_seasons baseline: %s", baseline_seasons)
         baseline_seasons = []
     if isinstance(compared_seasons, Exception):
+        logger.error("get_seasons compared: %s", compared_seasons)
         compared_seasons = []
 
     common_seasons = sorted(set(baseline_seasons) & set(compared_seasons))
