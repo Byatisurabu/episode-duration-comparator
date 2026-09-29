@@ -53,19 +53,15 @@ async def _post_init(application) -> None:
     application.bot_data["watchdog"] = watchdog
 
 
-def main():
-    token = os.environ.get("BOT_TOKEN")
-    if not token:
-        raise RuntimeError(
-            "BOT_TOKEN не задан. Добавь его в .env или в переменные окружения."
-        )
-
+def build_application(token: str):
     app = (
         ApplicationBuilder()
         .token(token)
-        # Апдейты разных пользователей обрабатываются параллельно: долгое сравнение
-        # "всех сезонов" у одного не блокирует бота для остальных
-        .concurrent_updates(True)
+        # concurrent_updates НЕ включать: PTB тогда обрабатывает параллельно и апдейты
+        # одного пользователя, а ConversationHandler к этому не готов — /cancel во время
+        # долгого "Все сезоны" завершает диалог, но долгий обработчик по окончании
+        # возвращает WAIT_SEASON поверх END, и бот снова выглядит зависшим
+        #
         # Явные таймауты к Telegram API — чтобы запрос не висел бесконечно
         .connect_timeout(10)
         .read_timeout(20)
@@ -75,8 +71,18 @@ def main():
         .post_init(_post_init)
         .build()
     )
-
     register_handlers(app)
+    return app
+
+
+def main():
+    token = os.environ.get("BOT_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "BOT_TOKEN не задан. Добавь его в .env или в переменные окружения."
+        )
+
+    app = build_application(token)
 
     logger.info("Бот запущен в режиме polling")
 

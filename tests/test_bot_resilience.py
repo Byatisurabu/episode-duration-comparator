@@ -14,6 +14,7 @@ from bot.handlers import (
     error_handler,
     register_handlers,
 )
+from bot.main import build_application
 from bot.watchdog import Watchdog
 
 
@@ -54,6 +55,13 @@ class TestHandlerOrder:
         app = ApplicationBuilder().token("123:TEST").build()
         register_handlers(app)
         assert error_handler in app.error_handlers
+
+
+class TestSequentialUpdates:
+    def test_updates_not_concurrent(self):
+        """С concurrent_updates долгий обработчик возвращает своё состояние поверх END
+        от /cancel того же пользователя — диалог "воскресает" в старом шаге."""
+        assert build_application("123:TEST").concurrent_updates == 1
 
 
 class TestResetCommands:
