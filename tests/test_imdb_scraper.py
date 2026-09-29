@@ -1,79 +1,68 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+import gzip
+import sys
 
 import pytest
 
+from app.scrapers.base import ServiceUnavailableError
 from app.scrapers.imdb import ImdbScraper
+from app.services import imdb_dataset
+from app.services.imdb_dataset import ImdbDataset, build_from_files, is_fresh
+
+EPISODE_TSV = """tconst\tparentTconst\tseasonNumber\tepisodeNumber
+tt0959621\ttt0903747\t1\t1
+tt1054724\ttt0903747\t1\t2
+tt1054725\ttt0903747\t1\t3
+tt1232244\ttt0903747\t2\t1
+tt9999999\ttt0903747\t\\N\t\\N
+tt12345678\ttt0903747\t3\t1
+"""
+
+# tt1054725 — без runtime, tt9999999 — без номера сезона: оба не должны попасть в базу
+BASICS_TSV = """tconst\ttitleType\tprimaryTitle\toriginalTitle\tisAdult\tstartYear\tendYear\truntimeMinutes\tgenres
+tt0903747\ttvSeries\tBreaking Bad\tBreaking Bad\t0\t2008\t2013\t45\tDrama
+tt0959621\ttvEpisode\tPilot\tPilot\t0\t2008\t\\N\t58\tDrama
+tt1054724\ttvEpisode\tCat's in the Bag...\tCat's in the Bag...\t0\t2008\t\\N\t48\tDrama
+tt1054725\ttvEpisode\tNo Runtime\tNo Runtime\t0\t2008\t\\N\t\\N\tDrama
+tt1232244\ttvEpisode\tSeven Thirty-Seven\tSeven Thirty-Seven\t0\t2009\t\\N\t47\tDrama
+tt9999999\ttvEpisode\tNo Season\tNo Season\t0\t2009\t\\N\t40\tDrama
+tt12345678\ttvEpisode\tEight Digit Id\tEight Digit Id\t0\t2010\t\\N\t50\tDrama
+tt0000001\tmovie\tSome Movie\tSome Movie\t0\t1900\t\\N\t10\tShort
+"""
+
+
+def _write_gz(path, text):
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        f.write(text)
 
 
 @pytest.fixture
-def scraper():
-    return ImdbScraper()
+def db_path(tmp_path):
+    episode = tmp_path / "title.episode.tsv.gz"
+    basics = tmp_path / "title.basics.tsv.gz"
+    _write_gz(episode, EPISODE_TSV)
+    _write_gz(basics, BASICS_TSV)
+    path = tmp_path / "imdb.db"
+    build_from_files(episode, basics, path)
+    return path
 
 
-# Мок-ответ GraphQL для эпизодов
-EPISODES_GRAPHQL_RESPONSE = {
-    "data": {
-        "title": {
-            "titleText": {"text": "Breaking Bad"},
-            "episodes": {
-                "episodes": {
-                    "edges": [
-                        {
-                            "node": {
-                                "id": "tt0959621",
-                                "titleText": {"text": "Pilot"},
-                                "series": {"episodeNumber": {"seasonNumber": 1, "episodeNumber": 1}},
-                                "runtime": {"seconds": 3480},
-                            }
-                        },
-                        {
-                            "node": {
-                                "id": "tt1054724",
-                                "titleText": {"text": "Cat's in the Bag..."},
-                                "series": {"episodeNumber": {"seasonNumber": 1, "episodeNumber": 2}},
-                                "runtime": {"seconds": 2880},
-                            }
-                        },
-                    ]
-                }
-            },
-        }
-    }
-}
-
-SEASONS_GRAPHQL_RESPONSE = {
-    "data": {
-        "title": {
-            "titleText": {"text": "Breaking Bad"},
-            "episodes": {
-                "seasons": [{"number": 1}, {"number": 2}, {"number": 3}]
-            },
-        }
-    }
-}
-
-TITLE_GRAPHQL_RESPONSE = {
-    "data": {
-        "title": {
-            "titleText": {"text": "Breaking Bad"}
-        }
-    }
-}
+@pytest.fixture
+def scraper(db_path):
+    return ImdbScraper(ImdbDataset(db_path))
 
 
-def _mock_httpx_response(json_data, status_code=200):
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data
-    return resp
+@pytest.fixture
+def scraper_not_ready(tmp_path):
+    return ImdbScraper(ImdbDataset(tmp_path / "missing.db"))
 
 
 class TestExtractSeriesId:
     def test_standard_url(self, scraper):
-        assert scraper._extract_series_id("https://www.imdb.com/title/tt0903747/episodes?season=1") == "tt0903747"
+        assert scraper._extract_series_id("https://www.imdb.com/title/tt0903747/") == "tt0903747"
 
     def test_no_match(self, scraper):
-        assert scraper._extract_series_id("https://www.imdb.com/chart/top") is None
+        assert scraper._extract_series_id("https://example.com/") is None
 
 
 class TestExtractSeason:
@@ -84,94 +73,123 @@ class TestExtractSeason:
         assert scraper._extract_season("https://www.imdb.com/title/tt0903747/") is None
 
 
-class TestScrapeEpisodes:
-    @pytest.mark.asyncio
-    async def test_success(self, scraper):
-        with patch.object(scraper, "_graphql", new_callable=AsyncMock) as mock_gql:
-            mock_gql.return_value = EPISODES_GRAPHQL_RESPONSE["data"]
-            result = await scraper.scrape_episodes(
-                "https://www.imdb.com/title/tt0903747/episodes?season=1"
-            )
-            assert result.series_title == "Breaking Bad"
-            assert len(result.episodes) == 2
-            assert result.episodes[0].title == "Pilot"
-            assert result.episodes[0].duration_min == 58  # ceil(3480/60)
-            assert result.episodes[0].episode_id == "tt0959621"
-            assert result.episodes[1].duration_min == 48  # ceil(2880/60)
+class TestBuildDatabase:
+    def test_tmp_file_removed(self, db_path):
+        assert db_path.exists()
+        assert list(db_path.parent.glob("*.tmp")) == []
 
-    @pytest.mark.asyncio
+    def test_failed_build_removes_tmp(self, tmp_path):
+        broken = tmp_path / "broken.tsv.gz"
+        broken.write_bytes(b"not a gzip")
+        with pytest.raises(Exception):
+            build_from_files(broken, broken, tmp_path / "imdb.db")
+        assert list(tmp_path.glob("*.tmp")) == []
+        assert not (tmp_path / "imdb.db").exists()
+
+    def test_is_fresh(self, db_path, tmp_path):
+        assert is_fresh(db_path)
+        assert not is_fresh(tmp_path / "missing.db")
+
+
+class TestRefreshLoop:
+    async def test_survives_exception(self, monkeypatch, tmp_path):
+        """Исключение в итерации не должно останавливать цикл обновления навсегда."""
+        calls = []
+
+        async def failing_build():
+            calls.append(1)
+            if len(calls) >= 2:
+                raise asyncio.CancelledError  # вторая итерация — цикл жив, выходим
+            raise OSError("No space left on device")
+
+        monkeypatch.setattr(imdb_dataset, "_run_build", failing_build)
+        monkeypatch.setattr(imdb_dataset, "CHECK_INTERVAL_SECONDS", 0)
+        with pytest.raises(asyncio.CancelledError):
+            await imdb_dataset.refresh_loop(tmp_path / "missing.db")
+        assert len(calls) == 2
+
+
+class TestRunBuild:
+    async def test_cancel_terminates_subprocess(self, monkeypatch):
+        """При остановке приложения процесс сборки не должен оставаться сиротой."""
+        started = []
+        real_exec = asyncio.create_subprocess_exec
+
+        async def fake_exec(*args, **kwargs):
+            proc = await real_exec(sys.executable, "-c", "import time; time.sleep(60)")
+            started.append(proc)
+            return proc
+
+        monkeypatch.setattr(imdb_dataset.asyncio, "create_subprocess_exec", fake_exec)
+        task = asyncio.create_task(imdb_dataset._run_build())
+        while not started:
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert started[0].returncode is not None
+
+
+class TestScrapeEpisodes:
+    async def test_success(self, scraper):
+        result = await scraper.scrape_episodes("https://www.imdb.com/title/tt0903747/episodes?season=1")
+        assert result.series_title == "Breaking Bad"
+        assert [e.episode for e in result.episodes] == [1, 2]
+        assert result.episodes[0].title == "Pilot"
+        assert result.episodes[0].duration_min == 58
+        assert result.episodes[0].episode_id == "tt0959621"
+        assert result.episodes[1].duration_min == 48
+
+    async def test_episode_without_runtime_skipped(self, scraper):
+        result = await scraper.scrape_episodes("https://www.imdb.com/title/tt0903747/episodes?season=1")
+        assert "No Runtime" not in [e.title for e in result.episodes]
+
+    async def test_eight_digit_id(self, scraper):
+        result = await scraper.scrape_episodes("https://www.imdb.com/title/tt0903747/episodes?season=3")
+        assert result.episodes[0].episode_id == "tt12345678"
+
+    async def test_unknown_season(self, scraper):
+        result = await scraper.scrape_episodes("https://www.imdb.com/title/tt0903747/episodes?season=9")
+        assert result.episodes == []
+
     async def test_invalid_url(self, scraper):
         result = await scraper.scrape_episodes("https://example.com/no-id")
         assert result.episodes == []
 
-    @pytest.mark.asyncio
     async def test_no_season_in_url(self, scraper):
         result = await scraper.scrape_episodes("https://www.imdb.com/title/tt0903747/")
         assert result.episodes == []
 
-    @pytest.mark.asyncio
-    async def test_episode_without_runtime(self, scraper):
-        """Эпизоды без runtime фильтруются из результата."""
-        data = {
-            "title": {
-                "titleText": {"text": "Test"},
-                "episodes": {
-                    "episodes": {
-                        "edges": [
-                            {
-                                "node": {
-                                    "id": "tt123",
-                                    "titleText": {"text": "No Runtime"},
-                                    "series": {"episodeNumber": {"seasonNumber": 1, "episodeNumber": 1}},
-                                    "runtime": None,
-                                }
-                            }
-                        ]
-                    }
-                },
-            }
-        }
-        with patch.object(scraper, "_graphql", new_callable=AsyncMock) as mock_gql:
-            mock_gql.return_value = data
-            result = await scraper.scrape_episodes(
-                "https://www.imdb.com/title/tt0903747/episodes?season=1"
-            )
-            assert result.episodes == []
+    async def test_not_ready(self, scraper_not_ready):
+        with pytest.raises(ServiceUnavailableError):
+            await scraper_not_ready.scrape_episodes("https://www.imdb.com/title/tt0903747/episodes?season=1")
 
 
 class TestGetSeasons:
-    @pytest.mark.asyncio
     async def test_success(self, scraper):
-        with patch.object(scraper, "_graphql", new_callable=AsyncMock) as mock_gql:
-            mock_gql.return_value = SEASONS_GRAPHQL_RESPONSE["data"]
-            seasons = await scraper.get_seasons("https://www.imdb.com/title/tt0903747/")
-            assert seasons == [1, 2, 3]
+        assert await scraper.get_seasons("https://www.imdb.com/title/tt0903747/") == [1, 2, 3]
 
-    @pytest.mark.asyncio
+    async def test_unknown_series(self, scraper):
+        assert await scraper.get_seasons("https://www.imdb.com/title/tt0000002/") == []
+
     async def test_invalid_url(self, scraper):
-        seasons = await scraper.get_seasons("https://example.com/no-id")
-        assert seasons == []
+        assert await scraper.get_seasons("https://example.com/no-id") == []
 
-    @pytest.mark.asyncio
-    async def test_graphql_failure(self, scraper):
-        with patch.object(scraper, "_graphql", new_callable=AsyncMock) as mock_gql:
-            mock_gql.return_value = None
-            seasons = await scraper.get_seasons("https://www.imdb.com/title/tt0903747/")
-            assert seasons == []
+    async def test_not_ready(self, scraper_not_ready):
+        with pytest.raises(ServiceUnavailableError):
+            await scraper_not_ready.get_seasons("https://www.imdb.com/title/tt0903747/")
 
 
 class TestGetSeriesTitle:
-    @pytest.mark.asyncio
     async def test_success(self, scraper):
-        with patch.object(scraper, "_graphql", new_callable=AsyncMock) as mock_gql:
-            mock_gql.return_value = TITLE_GRAPHQL_RESPONSE["data"]
-            title = await scraper.get_series_title("https://www.imdb.com/title/tt0903747/")
-            assert title == "Breaking Bad"
+        assert await scraper.get_series_title("https://www.imdb.com/title/tt0903747/") == "Breaking Bad"
 
-    @pytest.mark.asyncio
     async def test_invalid_url(self, scraper):
-        title = await scraper.get_series_title("https://example.com/no-id")
-        assert title is None
+        assert await scraper.get_series_title("https://example.com/no-id") is None
+
+    async def test_not_ready(self, scraper_not_ready):
+        with pytest.raises(ServiceUnavailableError):
+            await scraper_not_ready.get_series_title("https://www.imdb.com/title/tt0903747/")
 
 
 class TestBuildSeasonUrl:

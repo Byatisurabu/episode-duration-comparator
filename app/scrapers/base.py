@@ -5,6 +5,10 @@ from typing import List, Optional
 from app.models import ScrapeResult
 
 
+class ServiceUnavailableError(Exception):
+    """Источник данных сервиса временно недоступен. str(e) — готовое сообщение для пользователя."""
+
+
 class BaseScraper(ABC):
 
     @abstractmethod
